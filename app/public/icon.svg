@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- PWAアイコン原版: 計器盤テーマ(パネルネイビー背景+メーターアンバーの燃料計) -->
+  <rect width="512" height="512" fill="#1F2B3A"/>
+  <!-- 燃料計の目盛りアーク -->
+  <path d="M 126.1 363 A 150 150 0 1 1 385.9 363" fill="none" stroke="#F5A524" stroke-width="36" stroke-linecap="round"/>
+  <!-- E / F の目盛り -->
+  <line x1="139.1" y1="355.5" x2="165" y2="340.5" stroke="#1F2B3A" stroke-width="14" stroke-linecap="round"/>
+  <line x1="372.9" y1="355.5" x2="347" y2="340.5" stroke="#1F2B3A" stroke-width="14" stroke-linecap="round"/>
+  <line x1="256" y1="138" x2="256" y2="168" stroke="#1F2B3A" stroke-width="14" stroke-linecap="round"/>
+  <!-- 針(F寄り) -->
+  <line x1="256" y1="288" x2="333.8" y2="210.2" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+  <!-- 針の軸 -->
+  <circle cx="256" cy="288" r="34" fill="#F5A524"/>
+  <circle cx="256" cy="288" r="14" fill="#1F2B3A"/>
+  <!-- 燃料ドロップ(下部中央) -->
+  <path d="M256 396 l24 24 a34 34 0 1 1 -48 0 z" fill="#F5A524"/>
+</svg>

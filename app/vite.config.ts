@@ -18,11 +18,16 @@ export default defineConfig({
         lang: 'ja',
         display: 'standalone',
         orientation: 'portrait',
-        theme_color: '#1b2a4a',
-        background_color: '#ffffff',
+        // デザインガイドのパネルネイビー(--c-panel)・画面背景色に合わせる
+        theme_color: '#1F2B3A',
+        background_color: '#F1F4F8',
         start_url: './',
-        // TODO(ui-ux-designer/frontend-developer): アイコン画像(192px/512px)を public/ に追加して登録する
-        icons: [],
+        // アイコン原版は public/icon.svg。PNGは `npm run icons` で再生成(scripts/generate-icons.mjs)
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
