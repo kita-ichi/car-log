@@ -1,0 +1,28 @@
+# 依存関係
+node_modules/
+
+# ビルド成果物
+dist/
+dist-ssr/
+build/
+coverage/
+
+# ログ
+*.log
+npm-debug.log*
+
+# 環境変数
+.env
+.env.local
+.env.*.local
+
+# エディタ・OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Vite / PWA 生成物
+app/dev-dist/
+*.local

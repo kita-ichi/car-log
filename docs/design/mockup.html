@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>カーメンテ&燃費記録 — UIモックアップ</title>
+<style>
+/* ============ デザイントークン(デザインガイド.md 準拠) ============ */
+:root{
+  --c-panel:#1F2B3A;
+  --c-panel-ink:#FFFFFF;
+  --c-panel-sub:#9FB0C4;
+  --c-accent:#F5A524;
+  --c-accent-ink:#201500;
+  --c-accent-deep:#B26E00;
+  --c-primary:#1D5BBF;
+  --c-bg:#F1F4F8;
+  --c-surface:#FFFFFF;
+  --c-ink:#1B2733;
+  --c-sub:#617082;
+  --c-line:#E3E9F0;
+  --c-success:#178A50;
+  --c-warn-ink:#8A5A00;
+  --c-warn-bg:#FFF4D6;
+  --c-danger:#D23B4B;
+  --r-sm:8px; --r-md:12px; --r-lg:20px;
+  --shadow:0 1px 3px rgba(16,30,54,.08);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:#C9D2DD;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;
+  color:var(--c-ink);font-size:15px;line-height:1.6;
+}
+.mock-note{max-width:430px;margin:8px auto 0;padding:0 16px;font-size:12px;color:#44546A;text-align:center}
+@media (max-width:460px){ .mock-note{display:none} body{background:var(--c-bg)} .phone{box-shadow:none !important} }
+
+/* ============ 端末フレーム ============ */
+.phone{
+  max-width:430px;height:calc(100dvh - 40px);min-height:560px;margin:8px auto 16px;
+  background:var(--c-bg);display:flex;flex-direction:column;position:relative;
+  border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(16,30,54,.3);
+}
+@media (max-width:460px){ .phone{height:100dvh;margin:0;border-radius:0} }
+main{flex:1;overflow-y:auto;overscroll-behavior:contain;position:relative}
+.screen{display:none;min-height:100%;flex-direction:column}
+.screen.active{display:flex}
+
+/* ============ アプリバー ============ */
+.appbar{
+  position:sticky;top:0;z-index:20;background:var(--c-panel);color:var(--c-panel-ink);
+  min-height:56px;padding:10px 16px;display:flex;align-items:center;gap:10px;
+}
+.appbar .title{font-size:18px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appbar .sub-title{font-size:11px;color:var(--c-panel-sub);font-weight:500;letter-spacing:.06em}
+.iconbtn{
+  appearance:none;border:0;background:transparent;color:inherit;cursor:pointer;
+  width:44px;height:44px;margin:-8px;display:flex;align-items:center;justify-content:center;border-radius:50%;
+  flex-shrink:0;
+}
+.iconbtn:active{background:rgba(255,255,255,.12)}
+.appbar .txtbtn{
+  appearance:none;border:0;background:transparent;color:#FFD98A;font-size:15px;font-weight:700;cursor:pointer;
+  padding:10px 4px;flex-shrink:0;
+}
+/* 車両チップ */
+.vchip{
+  appearance:none;border:0;cursor:pointer;
+  display:flex;align-items:center;gap:6px;max-width:70%;
+  background:rgba(255,255,255,.12);color:var(--c-panel-ink);
+  border-radius:999px;padding:8px 12px 8px 10px;font-size:15px;font-weight:700;
+}
+.vchip:active{background:rgba(255,255,255,.22)}
+.vchip .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vchip svg{flex-shrink:0}
+
+/* ============ タブバー ============ */
+.tabbar{
+  display:flex;background:var(--c-surface);border-top:1px solid var(--c-line);
+  padding-bottom:env(safe-area-inset-bottom);z-index:20;
+}
+.tab{
+  appearance:none;border:0;background:transparent;cursor:pointer;
+  flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  color:var(--c-sub);font-size:11px;font-weight:500;position:relative;font-family:inherit;
+}
+.tab.active{color:var(--c-panel);font-weight:700}
+.tab.active::before{content:"";position:absolute;top:0;left:20%;right:20%;height:3px;border-radius:0 0 3px 3px;background:var(--c-accent)}
+
+/* ============ 汎用 ============ */
+.body-pad{padding:16px;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--c-surface);border-radius:var(--r-md);box-shadow:var(--shadow);overflow:hidden}
+.card-pad{padding:16px}
+.card-h{font-size:13px;font-weight:700;color:var(--c-sub);letter-spacing:.04em;margin:0 0 8px}
+.num{font-variant-numeric:tabular-nums}
+.sub{font-size:13px;color:var(--c-sub)}
+.link{color:var(--c-primary);font-weight:700;text-decoration:none;cursor:pointer;background:none;border:0;font-size:14px;font-family:inherit;padding:0}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 10px;line-height:1.6}
+.badge.fe{background:var(--c-panel);color:#fff}
+.badge.wait{background:#E7ECF2;color:var(--c-sub)}
+.badge.full{background:#E3EDFB;color:var(--c-primary)}
+.badge.part{background:#E7ECF2;color:var(--c-sub)}
+.badge.sel{background:#E3EDFB;color:var(--c-primary)}
+
+/* ボタン */
+.btn{
+  appearance:none;border:0;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;min-height:56px;border-radius:var(--r-lg);font-size:17px;font-weight:700;
+}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--c-accent);color:var(--c-accent-ink)}
+.btn.primary:disabled{background:#E3E9F0;color:#9AA8B8;transform:none;cursor:default}
+.btn.secondary{background:var(--c-surface);color:var(--c-primary);border:2px solid var(--c-primary)}
+.btn.ghost{background:transparent;color:var(--c-primary);min-height:48px}
+.btn.danger-text{background:transparent;color:var(--c-danger);min-height:48px;font-size:15px}
+.btn.xl{min-height:64px;font-size:18px}
+
+/* リスト */
+.list{background:var(--c-surface);border-radius:var(--r-md);box-shadow:var(--shadow);overflow:hidden}
+.row{
+  display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:60px;
+  border-bottom:1px solid var(--c-line);cursor:pointer;background:var(--c-surface);
+  width:100%;text-align:left;border-left:0;border-right:0;border-top:0;appearance:none;font-family:inherit;font-size:15px;color:var(--c-ink);
+}
+.row:last-child{border-bottom:0}
+.row:active{background:#F5F8FC}
+.row .grow{flex:1;min-width:0}
+.row .chev{color:#B6C2D0;flex-shrink:0}
+.date-col{width:52px;flex-shrink:0;text-align:center;line-height:1.3}
+.date-col .md{font-size:15px;font-weight:700}
+.date-col .wd{font-size:11px;color:var(--c-sub)}
+
+/* フォーム */
+.field{background:var(--c-surface);border-radius:var(--r-md);padding:10px 16px 12px;box-shadow:var(--shadow)}
+.field label{display:block;font-size:13px;font-weight:700;color:var(--c-sub)}
+.field .inrow{display:flex;align-items:baseline;gap:8px}
+.field input[type="number"],.field input[type="text"],.field input[type="date"],.field input[type="month"],.field select{
+  appearance:none;border:0;outline:none;background:transparent;width:100%;
+  font-family:inherit;color:var(--c-ink);padding:6px 0;
+  font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.field input.num-lg{font-size:28px;text-align:right}
+.field input.txt{font-size:17px;font-weight:400}
+.field .unit{font-size:13px;color:var(--c-sub);font-weight:700;flex-shrink:0;width:2.6em}
+.field .hint{font-size:13px;color:var(--c-sub);margin-top:2px}
+.field .auto{font-size:13px;color:var(--c-accent-deep);font-weight:700;margin-top:2px}
+.field:focus-within{outline:2px solid var(--c-primary);outline-offset:-2px}
+.warnchip{
+  display:none;margin-top:8px;padding:8px 12px;border-radius:var(--r-sm);
+  background:var(--c-warn-bg);color:var(--c-warn-ink);font-size:13px;font-weight:500;
+}
+.warnchip.show{display:block}
+/* 対象車両行(入力画面) */
+.target-vehicle{
+  display:flex;align-items:center;gap:10px;width:100%;
+  background:var(--c-surface);border:0;border-radius:var(--r-md);padding:12px 16px;min-height:56px;
+  box-shadow:var(--shadow);cursor:pointer;font-family:inherit;font-size:15px;text-align:left;color:var(--c-ink);
+}
+.target-vehicle:active{background:#F5F8FC}
+.target-vehicle .lbl{font-size:13px;font-weight:700;color:var(--c-sub)}
+.target-vehicle .nm{font-size:17px;font-weight:700}
+/* トグル */
+.switchrow{display:flex;align-items:center;gap:12px;background:var(--c-surface);border-radius:var(--r-md);padding:12px 16px;min-height:56px;box-shadow:var(--shadow)}
+.switchrow .grow{flex:1}
+.switchrow .t{font-size:17px;font-weight:700}
+.switch{position:relative;width:52px;height:32px;flex-shrink:0}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.switch .knob{
+  position:absolute;inset:0;border-radius:999px;background:#C7D1DC;transition:background .15s;
+}
+.switch .knob::after{
+  content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s;
+}
+.switch input:checked + .knob{background:var(--c-success)}
+.switch input:checked + .knob::after{left:23px}
+/* 保存バー */
+.savebar{
+  position:sticky;bottom:0;z-index:15;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to top, var(--c-bg) 75%, rgba(241,244,248,0));margin-top:auto;
+}
+.savebar .note{font-size:12px;color:var(--c-sub);text-align:center;margin:6px 0 0}
+
+/* FAB */
+.fab{
+  position:absolute;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:18;
+  width:56px;height:56px;border-radius:50%;border:0;cursor:pointer;
+  background:var(--c-accent);color:var(--c-accent-ink);
+  display:none;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(181,120,0,.4);
+}
+.fab:active{transform:scale(.96)}
+
+/* チップ(フィルタ・期間) */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  appearance:none;cursor:pointer;font-family:inherit;flex-shrink:0;
+  min-height:36px;padding:6px 16px;border-radius:999px;font-size:14px;font-weight:500;
+  background:var(--c-surface);color:var(--c-ink);border:1px solid #C7D1DC;
+}
+.chip.active{background:var(--c-panel);color:#fff;border-color:var(--c-panel);font-weight:700}
+/* 種別選択グリッド */
+.typegrid{display:flex;flex-wrap:wrap;gap:8px}
+.typegrid .chip{min-height:44px}
+/* セグメントコントロール(車両タイプ: 車/バイク) */
+.seg{display:flex;background:#E7ECF2;border-radius:var(--r-sm);padding:4px;gap:4px;margin-top:6px}
+.seg button{
+  flex:1;min-height:44px;border:0;border-radius:6px;background:transparent;cursor:pointer;
+  font-family:inherit;font-size:15px;font-weight:700;color:var(--c-sub);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.seg button.active{background:var(--c-surface);color:var(--c-ink);box-shadow:var(--shadow)}
+/* 車両タイプアイコン(車/バイク)の動的差し込み枠 */
+.js-vicon{display:flex;align-items:center;flex-shrink:0}
+
+/* ホーム */
+.hero{background:var(--c-panel);color:#fff;padding:8px 20px 24px;border-radius:0 0 24px 24px}
+.hero .lbl{font-size:12px;color:var(--c-panel-sub);font-weight:700;letter-spacing:.08em}
+.hero .big{font-size:44px;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
+.hero .big small{font-size:16px;font-weight:700;color:var(--c-panel-sub);margin-left:4px}
+.hero .meta{display:flex;gap:20px;margin-top:10px;font-size:13px;color:var(--c-panel-sub)}
+.hero .meta b{color:#fff;font-variant-numeric:tabular-nums;font-size:15px}
+.trend-up{color:#5DD39E !important;font-weight:700}
+.trend-down{color:#FF9AA5 !important;font-weight:700}
+.home-cta{display:flex;flex-direction:column;gap:12px}
+
+/* グラフ */
+.graph-wrap{padding:12px 8px 4px}
+.graph-tip{
+  display:none;margin:8px 16px 16px;padding:12px 16px;border-radius:var(--r-md);
+  background:#F0F5FC;font-size:14px;align-items:center;gap:12px;
+}
+.graph-tip.show{display:flex}
+.gdot{cursor:pointer}
+
+/* シート・ダイアログ */
+.overlay{
+  position:absolute;inset:0;z-index:40;background:rgba(15,25,40,.5);
+  display:none;align-items:flex-end;
+}
+.overlay.center{align-items:center;justify-content:center;padding:24px}
+.overlay.show{display:flex}
+.sheet{
+  width:100%;background:var(--c-surface);border-radius:var(--r-lg) var(--r-lg) 0 0;
+  padding:8px 16px calc(24px + env(safe-area-inset-bottom));
+  animation:slideup .2s ease-out;
+}
+@keyframes slideup{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:#C7D1DC;margin:4px auto 12px}
+.sheet h3{margin:0 0 8px;font-size:15px;color:var(--c-sub);font-weight:700}
+.vrow{
+  display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:8px 4px;
+  background:transparent;border:0;border-bottom:1px solid var(--c-line);cursor:pointer;
+  font-family:inherit;font-size:17px;font-weight:700;color:var(--c-ink);text-align:left;
+}
+.vrow .grow{flex:1;min-width:0}
+.vrow .sub{font-weight:400}
+.vrow.on{color:var(--c-primary)}
+.vrow .check{visibility:hidden;color:var(--c-primary);flex-shrink:0}
+.vrow.on .check{visibility:visible}
+.dialog{
+  background:var(--c-surface);border-radius:var(--r-lg);padding:24px 20px 12px;width:100%;max-width:320px;
+  text-align:center;animation:slideup .15s ease-out;
+}
+.dialog h3{margin:0 0 8px;font-size:17px}
+.dialog p{margin:0 0 16px;font-size:14px;color:var(--c-sub)}
+.dialog .acts{display:flex;gap:8px}
+.dialog .acts .btn{min-height:48px;font-size:15px;border-radius:var(--r-md)}
+.dialog .acts .btn.dngr{background:var(--c-danger);color:#fff}
+
+/* トースト */
+#toast{
+  position:absolute;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:50;
+  background:var(--c-ink);color:#fff;border-radius:var(--r-md);padding:12px 16px;font-size:14px;font-weight:500;
+  opacity:0;pointer-events:none;transition:opacity .25s;text-align:center;
+}
+#toast.show{opacity:.96}
+
+/* 詳細画面のサマリ */
+.calc-summary{background:#EAF3EC;border-radius:var(--r-md);padding:14px 16px;display:flex;gap:24px}
+.calc-summary .item .l{font-size:12px;color:var(--c-sub);font-weight:700}
+.calc-summary .item .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--c-success)}
+.calc-summary .item .v small{font-size:12px;color:var(--c-sub);font-weight:700}
+
+/* 設定 */
+.setrow-note{font-size:12px;color:var(--c-sub);padding:0 16px 12px}
+.disabled-row{opacity:.45;pointer-events:none}
+</style>
+</head>
+<body>
+<p class="mock-note">UIモックアップ(PC表示時は端末フレーム内が実画面イメージ / 幅430px)。下部タブと画面内リンクで全10画面を行き来できます。</p>
+
+<div class="phone">
+<main id="main">
+
+<!-- ================================================== S-01 ホーム -->
+<section class="screen active" id="s01" data-tab="home">
+  <header class="appbar">
+    <button class="vchip" onclick="openSheet()" aria-label="車両を切り替え">
+      <span class="js-vicon" data-size="20"></span>
+      <span class="nm js-vname">ノート</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <span style="flex:1"></span>
+    <span class="sub-title">7/3(金)</span>
+  </header>
+
+  <div class="hero">
+    <div class="lbl">直近の燃費</div>
+    <div class="big num"><span id="home-recent">19.2</span><small>km/L</small></div>
+    <div class="meta">
+      <span>平均 <b id="home-avg">18.6</b> km/L</span>
+      <span>前回比 <b class="trend-up" id="home-diff">+0.8</b></span>
+      <span>今月の燃料費 <b id="home-month">¥7,124</b></span>
+    </div>
+  </div>
+
+  <div class="body-pad" style="flex:1">
+    <div class="home-cta">
+      <button class="btn primary xl" onclick="go('s02')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+        給油を記録
+      </button>
+      <button class="btn secondary" onclick="go('s05')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        メンテを記録
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-pad" style="padding-bottom:8px;display:flex;align-items:center">
+        <h2 class="card-h" style="margin:0;flex:1">燃費の推移(直近12回)</h2>
+        <button class="link" onclick="go('s07')">グラフを見る</button>
+      </div>
+      <div style="padding:0 16px 16px" onclick="go('s07')" role="button">
+        <svg id="home-spark" width="100%" height="56" viewBox="0 0 320 56" preserveAspectRatio="none" aria-label="燃費ミニグラフ"></svg>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-pad" style="padding-bottom:8px;display:flex;align-items:center">
+        <h2 class="card-h" style="margin:0;flex:1">直近のメンテナンス</h2>
+        <button class="link" onclick="go('s06')">すべて見る</button>
+      </div>
+      <button class="row" onclick="go('s06')">
+        <div class="grow">
+          <div style="font-weight:700">オイル交換</div>
+          <div class="sub num">2026/06/21 ・ 33,890 km ・ オートバックス環状店</div>
+        </div>
+        <div class="num" style="font-weight:700">¥4,950</div>
+      </button>
+      <button class="row" onclick="go('s06')">
+        <div class="grow">
+          <div style="font-weight:700">タイヤローテーション</div>
+          <div class="sub num">2026/05/10 ・ 32,400 km</div>
+        </div>
+        <div class="num" style="font-weight:700">¥1,100</div>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================== S-02 給油入力(最重要) -->
+<section class="screen" id="s02" data-tab="fuel" data-modal="1">
+  <header class="appbar">
+    <button class="iconbtn" onclick="go('s01')" aria-label="キャンセル">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <span class="title">給油を記録</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <button class="target-vehicle" onclick="openSheet()">
+      <span class="js-vicon" data-size="22" data-stroke="var(--c-sub)"></span>
+      <span class="grow"><span class="lbl">対象車両</span><br><span class="nm js-vname">ノート</span></span>
+      <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B6C2D0" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+
+    <div class="field">
+      <label for="f-date">給油日</label>
+      <input type="date" id="f-date">
+    </div>
+
+    <div class="field">
+      <label for="f-odo">ODOメーター <span style="color:var(--c-danger)">*</span></label>
+      <div class="inrow">
+        <input type="number" inputmode="numeric" class="num-lg" id="f-odo" placeholder="34512" oninput="calcFuel()">
+        <span class="unit">km</span>
+      </div>
+      <div class="hint">前回: <span class="num js-prevodo">34,512</span> km</div>
+      <div class="warnchip" id="w-odo">前回(<span class="js-prevodo">34,512</span> km)より小さい値です。走行距離がマイナスになります</div>
+    </div>
+
+    <div class="field">
+      <label for="f-amount">給油量 <span style="color:var(--c-danger)">*</span></label>
+      <div class="inrow">
+        <input type="number" inputmode="decimal" step="0.01" class="num-lg" id="f-amount" placeholder="0.00" oninput="calcFuel()">
+        <span class="unit">L</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="f-price">支払金額(総額) <span style="color:var(--c-sub);font-weight:400">任意</span></label>
+      <div class="inrow">
+        <input type="number" inputmode="numeric" class="num-lg" id="f-price" placeholder="0" oninput="calcFuel()">
+        <span class="unit">円</span>
+      </div>
+      <div class="auto" id="f-unit-line">単価は金額を入力すると自動計算されます(前回 <span class="num">160</span> 円/L)</div>
+    </div>
+
+    <div class="switchrow">
+      <div class="grow">
+        <div class="t">満タン</div>
+        <div class="sub" id="fulltank-note">満タン給油ごとに燃費が確定します</div>
+      </div>
+      <span class="switch">
+        <input type="checkbox" id="f-full" checked onchange="calcFuel()">
+        <span class="knob"></span>
+      </span>
+    </div>
+    <div class="warnchip" id="w-fe" style="margin-top:-4px"></div>
+    <div class="calc-summary" id="fe-preview" style="display:none">
+      <div class="item"><div class="l">この区間の燃費</div><div class="v"><span id="fe-val">—</span> <small>km/L</small></div></div>
+      <div class="item"><div class="l">走行距離</div><div class="v" style="color:var(--c-ink)"><span id="fe-km">—</span> <small>km</small></div></div>
+    </div>
+
+    <div class="field">
+      <label for="f-station">給油所名(任意)</label>
+      <input type="text" class="txt" id="f-station" value="ENEOS 環状店">
+      <div class="hint">前回の給油所を初期表示しています</div>
+    </div>
+
+    <div class="field">
+      <label for="f-memo">メモ(任意)</label>
+      <input type="text" class="txt" id="f-memo" placeholder="高速走行が多め など">
+    </div>
+  </div>
+
+  <div class="savebar">
+    <button class="btn primary" id="f-save" onclick="saveFuel()" disabled>保存する</button>
+    <p class="note" id="f-save-note">必須はODO・給油量の2項目だけです(金額は任意)</p>
+  </div>
+</section>
+
+<!-- ================================================== S-03 給油履歴一覧 -->
+<section class="screen" id="s03" data-tab="fuel">
+  <header class="appbar">
+    <button class="vchip" onclick="openSheet()">
+      <span class="js-vicon" data-size="20"></span>
+      <span class="nm js-vname">ノート</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <span class="title" style="text-align:right;font-size:16px">給油履歴</span>
+    <button class="txtbtn" onclick="go('s07')">グラフ</button>
+  </header>
+
+  <div class="body-pad" style="gap:8px">
+    <div class="list">
+      <button class="row" onclick="toast('部分給油の記録です(モックでは 7/1 の詳細を表示します)');go('s04')">
+        <div class="date-col"><div class="md num">7/2</div><div class="wd">木</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">12.00 L ・ ¥1,944</div>
+          <div class="sub num">@162円/L ・ <span class="badge part">部分給油</span></div>
+        </div>
+        <span class="badge wait">計算待ち</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="go('s04')">
+        <div class="date-col"><div class="md num">7/1</div><div class="wd">水</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">32.40 L ・ ¥5,180</div>
+          <div class="sub num">@160円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">19.2 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="go('s04')">
+        <div class="date-col"><div class="md num">6/21</div><div class="wd">日</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">30.10 L ・ ¥4,880</div>
+          <div class="sub num">@162円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">18.4 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="go('s04')">
+        <div class="date-col"><div class="md num">6/13</div><div class="wd">土</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">28.55 L ・ ¥4,660</div>
+          <div class="sub num">@163円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">17.9 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="go('s04')">
+        <div class="date-col"><div class="md num">6/2</div><div class="wd">火</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">31.20 L ・ ¥5,020</div>
+          <div class="sub num">@161円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">18.8 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="go('s04')">
+        <div class="date-col"><div class="md num">5/24</div><div class="wd">日</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">29.80 L ・ ¥4,830</div>
+          <div class="sub num">@162円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">19.6 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" onclick="toast('金額なし記録の例です(モックでは 7/1 の詳細を表示します)');go('s04')">
+        <div class="date-col"><div class="md num">5/9</div><div class="wd">土</div></div>
+        <div class="grow">
+          <div class="num" style="font-weight:700">30.50 L ・ ¥ —</div>
+          <div class="sub num">@— 円/L ・ <span class="badge full">満タン</span></div>
+        </div>
+        <span class="badge fe num">18.1 km/L</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <p class="sub" style="margin:0 4px">「計算待ち」は部分給油の記録です。次の満タン給油時にまとめて燃費が確定します。金額は任意入力のため、未入力の記録は金額・単価を「—」と表示します。</p>
+    <div style="height:80px"></div><!-- FABと重ならない余白 -->
+  </div>
+</section>
+
+<!-- ================================================== S-04 給油詳細・編集 -->
+<section class="screen" id="s04" data-tab="fuel" data-modal="1">
+  <header class="appbar">
+    <button class="iconbtn" onclick="go('s03')" aria-label="戻る">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
+    <span class="title">給油の詳細</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <div class="calc-summary">
+      <div class="item"><div class="l">燃費(確定)</div><div class="v num">19.2 <small>km/L</small></div></div>
+      <div class="item"><div class="l">前回満タンから</div><div class="v num" style="color:var(--c-ink)">622 <small>km</small></div></div>
+    </div>
+
+    <button class="target-vehicle" onclick="openSheet()">
+      <span class="js-vicon" data-size="22" data-stroke="var(--c-sub)"></span>
+      <span class="grow"><span class="lbl">対象車両</span><br><span class="nm js-vname">ノート</span></span>
+      <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B6C2D0" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+
+    <div class="field">
+      <label>給油日</label>
+      <input type="date" value="2026-07-01">
+    </div>
+    <div class="field">
+      <label>ODOメーター</label>
+      <div class="inrow"><input type="number" inputmode="numeric" class="num-lg" value="34512"><span class="unit">km</span></div>
+    </div>
+    <div class="field">
+      <label>給油量</label>
+      <div class="inrow"><input type="number" inputmode="decimal" step="0.01" class="num-lg" value="32.40"><span class="unit">L</span></div>
+    </div>
+    <div class="field">
+      <label>支払金額(総額) <span style="color:var(--c-sub);font-weight:400">任意</span></label>
+      <div class="inrow"><input type="number" inputmode="numeric" class="num-lg" value="5180"><span class="unit">円</span></div>
+      <div class="auto">単価 ≒ <span class="num">159.9</span> 円/L(自動計算 ・ 金額未入力の場合は「—」)</div>
+    </div>
+    <div class="switchrow">
+      <div class="grow"><div class="t">満タン</div></div>
+      <span class="switch"><input type="checkbox" checked><span class="knob"></span></span>
+    </div>
+    <div class="field">
+      <label>給油所名(任意)</label>
+      <input type="text" class="txt" value="ENEOS 環状店">
+    </div>
+    <div class="field">
+      <label>メモ(任意)</label>
+      <input type="text" class="txt" placeholder="">
+    </div>
+
+    <button class="btn danger-text" onclick="openConfirm()">この記録を削除する</button>
+  </div>
+
+  <div class="savebar">
+    <button class="btn primary" onclick="toast('変更を保存しました(影響区間の燃費を再計算)');go('s03')">変更を保存</button>
+  </div>
+</section>
+
+<!-- ================================================== S-05 メンテナンス入力 -->
+<section class="screen" id="s05" data-tab="maint" data-modal="1">
+  <header class="appbar">
+    <button class="iconbtn" onclick="go('s06')" aria-label="キャンセル">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <span class="title">メンテを記録</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <button class="target-vehicle" onclick="openSheet()">
+      <span class="js-vicon" data-size="22" data-stroke="var(--c-sub)"></span>
+      <span class="grow"><span class="lbl">対象車両</span><br><span class="nm js-vname">ノート</span></span>
+      <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B6C2D0" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+
+    <div class="card card-pad">
+      <h2 class="card-h">種別 <span style="color:var(--c-danger)">*</span></h2>
+      <div class="typegrid" id="mtypes">
+        <button class="chip active" onclick="pickType(this)">オイル交換</button>
+        <button class="chip" onclick="pickType(this)">オイルフィルタ</button>
+        <button class="chip" onclick="pickType(this)">タイヤ交換</button>
+        <button class="chip" onclick="pickType(this)">タイヤローテーション</button>
+        <button class="chip" onclick="pickType(this)">車検</button>
+        <button class="chip" onclick="pickType(this)">法定点検</button>
+        <button class="chip" onclick="pickType(this)">バッテリー交換</button>
+        <button class="chip" onclick="pickType(this)">ワイパー交換</button>
+        <button class="chip" onclick="pickType(this)">その他</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="m-date">実施日</label>
+      <input type="date" id="m-date">
+    </div>
+    <div class="field">
+      <label for="m-odo">ODOメーター <span style="color:var(--c-danger)">*</span></label>
+      <div class="inrow"><input type="number" inputmode="numeric" class="num-lg" id="m-odo" placeholder="34512"><span class="unit">km</span></div>
+      <div class="hint">最新の給油記録: <span class="num js-prevodo">34,512</span> km</div>
+    </div>
+    <div class="field">
+      <label for="m-cost">費用(任意 ・ 0円可)</label>
+      <div class="inrow"><input type="number" inputmode="numeric" class="num-lg" id="m-cost" placeholder="0"><span class="unit">円</span></div>
+    </div>
+    <div class="field">
+      <label for="m-shop">実施店舗(任意)</label>
+      <input type="text" class="txt" id="m-shop" placeholder="オートバックス環状店">
+    </div>
+    <div class="field">
+      <label for="m-memo">メモ(任意)</label>
+      <input type="text" class="txt" id="m-memo" placeholder="オイル銘柄・交換部品など">
+    </div>
+  </div>
+
+  <div class="savebar">
+    <button class="btn primary" onclick="toast('メンテ記録を保存しました');go('s06')">保存する</button>
+  </div>
+</section>
+
+<!-- ================================================== S-06 メンテナンス履歴一覧 -->
+<section class="screen" id="s06" data-tab="maint">
+  <header class="appbar">
+    <button class="vchip" onclick="openSheet()">
+      <span class="js-vicon" data-size="20"></span>
+      <span class="nm js-vname">ノート</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <span class="title" style="text-align:right;font-size:16px">メンテ履歴</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <div class="chips" id="mfilters">
+      <button class="chip active" onclick="filterMaint(this,'all')">すべて</button>
+      <button class="chip" onclick="filterMaint(this,'oil')">オイル</button>
+      <button class="chip" onclick="filterMaint(this,'tire')">タイヤ</button>
+      <button class="chip" onclick="filterMaint(this,'insp')">車検・点検</button>
+      <button class="chip" onclick="filterMaint(this,'other')">その他</button>
+    </div>
+
+    <div class="list" id="mlist">
+      <button class="row" data-cat="oil" onclick="toast('モック: 詳細・編集画面(給油のS-04と同構成)を開きます')">
+        <div class="grow">
+          <div style="font-weight:700">オイル交換</div>
+          <div class="sub num">2026/06/21 ・ 33,890 km ・ オートバックス環状店</div>
+        </div>
+        <div class="num" style="font-weight:700">¥4,950</div>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" data-cat="tire" onclick="toast('モック: 詳細・編集画面を開きます')">
+        <div class="grow">
+          <div style="font-weight:700">タイヤローテーション</div>
+          <div class="sub num">2026/05/10 ・ 32,400 km</div>
+        </div>
+        <div class="num" style="font-weight:700">¥1,100</div>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" data-cat="insp" onclick="toast('モック: 詳細・編集画面を開きます')">
+        <div class="grow">
+          <div style="font-weight:700">車検</div>
+          <div class="sub num">2026/03/15 ・ 30,120 km ・ ○○モータース</div>
+        </div>
+        <div class="num" style="font-weight:700">¥89,800</div>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" data-cat="other" onclick="toast('モック: 詳細・編集画面を開きます')">
+        <div class="grow">
+          <div style="font-weight:700">ワイパー交換</div>
+          <div class="sub num">2025/12/02 ・ 27,800 km ・ 自分で交換</div>
+        </div>
+        <div class="num" style="font-weight:700">¥2,680</div>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="row" data-cat="other" onclick="toast('モック: 詳細・編集画面を開きます')">
+        <div class="grow">
+          <div style="font-weight:700">バッテリー交換</div>
+          <div class="sub num">2025/11/16 ・ 27,150 km ・ イエローハット</div>
+        </div>
+        <div class="num" style="font-weight:700">¥14,300</div>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div style="height:80px"></div>
+  </div>
+</section>
+
+<!-- ================================================== S-07 燃費グラフ -->
+<section class="screen" id="s07" data-tab="fuel">
+  <header class="appbar">
+    <button class="vchip" onclick="openSheet()">
+      <span class="js-vicon" data-size="20"></span>
+      <span class="nm js-vname">ノート</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <span class="title" style="text-align:right;font-size:16px">燃費グラフ</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <div class="chips">
+      <button class="chip active" onclick="pickPeriod(this)">直近12回</button>
+      <button class="chip" onclick="pickPeriod(this)">半年</button>
+      <button class="chip" onclick="pickPeriod(this)">1年</button>
+      <button class="chip" onclick="pickPeriod(this)">全期間</button>
+    </div>
+
+    <div class="card">
+      <div class="card-pad" style="padding-bottom:0;display:flex;gap:20px">
+        <div><div class="card-h" style="margin:0">平均燃費</div><div class="num" style="font-size:24px;font-weight:700"><span id="g-avg">18.6</span> <span class="sub">km/L</span></div></div>
+        <div><div class="card-h" style="margin:0">ベスト</div><div class="num" style="font-size:24px;font-weight:700;color:var(--c-success)"><span id="g-best">19.9</span> <span class="sub">km/L</span></div></div>
+        <div><div class="card-h" style="margin:0">ワースト</div><div class="num" style="font-size:24px;font-weight:700;color:var(--c-danger)"><span id="g-worst">17.9</span> <span class="sub">km/L</span></div></div>
+      </div>
+      <div class="graph-wrap">
+        <svg id="graph" width="100%" height="230" viewBox="0 0 360 230" aria-label="燃費推移グラフ"></svg>
+      </div>
+      <div class="graph-tip" id="gtip">
+        <div class="grow"><b class="num" id="gtip-date">7/1</b> の給油 ・ 燃費 <b class="num" id="gtip-val">19.2</b> km/L</div>
+        <button class="link" onclick="go('s04')">詳細を見る</button>
+      </div>
+    </div>
+    <p class="sub" style="margin:0 4px">グラフの点をタップすると該当する給油の詳細を確認できます。点線は期間平均です。</p>
+  </div>
+</section>
+
+<!-- ================================================== S-08 車両管理 -->
+<section class="screen" id="s08" data-tab="settings">
+  <header class="appbar">
+    <button class="iconbtn" onclick="go('s09')" aria-label="戻る">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
+    <span class="title">車両管理</span>
+  </header>
+
+  <div class="body-pad" style="gap:12px">
+    <div class="list">
+      <button class="row" onclick="selectVehicle('note')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--c-sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+        <div class="grow">
+          <div style="font-weight:700">ノート <span class="badge sel js-selmark-note">選択中</span></div>
+          <div class="sub num">車 ・ 日産 E13 ・ ODO 34,512 km ・ レギュラー</div>
+        </div>
+        <span class="link" onclick="event.stopPropagation();toggleVForm(true)">編集</span>
+      </button>
+      <button class="row" onclick="selectVehicle('jimny')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--c-sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+        <div class="grow">
+          <div style="font-weight:700">ジムニー <span class="badge sel js-selmark-jimny" style="display:none">選択中</span></div>
+          <div class="sub num">車 ・ スズキ JB64 ・ ODO 52,830 km ・ レギュラー</div>
+        </div>
+        <span class="link" onclick="event.stopPropagation();toggleVForm(true)">編集</span>
+      </button>
+      <button class="row" onclick="selectVehicle('mt07')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--c-sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="16" r="3"/><circle cx="19" cy="16" r="3"/><path d="M7.5 14h5l4-4H6"/><path d="M8.5 14l4-4"/><path d="M13 6h2l1.5 3 2 4"/></svg>
+        <div class="grow">
+          <div style="font-weight:700">MT-07 <span class="badge sel js-selmark-mt07" style="display:none">選択中</span></div>
+          <div class="sub num">バイク ・ ヤマハ ・ ODO 18,240 km ・ レギュラー</div>
+        </div>
+        <span class="link" onclick="event.stopPropagation();toggleVForm(true)">編集</span>
+      </button>
+    </div>
+    <p class="sub" style="margin:0 4px">行をタップすると選択中の車両に切り替わります。</p>
+
+    <button class="btn secondary" onclick="toggleVForm(true)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      車両を追加
+    </button>
+
+    <!-- 車両編集フォーム(モックでは同一画面内に展開) -->
+    <div id="vform" style="display:none;flex-direction:column;gap:12px">
+      <h2 class="card-h" style="margin:8px 4px 0">車両の編集</h2>
+      <div class="field">
+        <label>車両タイプ <span style="color:var(--c-danger)">*</span></label>
+        <div class="seg" id="v-type-seg">
+          <button type="button" class="active" onclick="pickVType(this,'car')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+            車
+          </button>
+          <button type="button" onclick="pickVType(this,'bike')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="16" r="3"/><circle cx="19" cy="16" r="3"/><path d="M7.5 14h5l4-4H6"/><path d="M8.5 14l4-4"/><path d="M13 6h2l1.5 3 2 4"/></svg>
+            バイク
+          </button>
+        </div>
+        <div class="hint">タイプに応じてメーカーの候補が切り替わります</div>
+      </div>
+      <div class="field">
+        <label>車両名 <span style="color:var(--c-danger)">*</span></label>
+        <input type="text" class="txt" value="ノート">
+      </div>
+      <div class="field">
+        <label for="v-maker">メーカー(任意)</label>
+        <select id="v-maker" onchange="onMakerChange()"></select>
+      </div>
+      <div class="field" id="v-maker-free-field" style="display:none">
+        <label for="v-maker-free">メーカー名を入力</label>
+        <input type="text" class="txt" id="v-maker-free" placeholder="例: テスラ、ロータス など">
+      </div>
+      <div class="field">
+        <label>型式・グレード(任意)</label>
+        <input type="text" class="txt" value="E13">
+      </div>
+      <div class="field">
+        <label>初度登録年月(任意)</label>
+        <input type="month" value="2021-06">
+      </div>
+      <div class="field">
+        <label>登録時ODO <span style="color:var(--c-danger)">*</span></label>
+        <div class="inrow"><input type="number" inputmode="numeric" class="num-lg" value="24300"><span class="unit">km</span></div>
+        <div class="hint">燃費計算の起点になります</div>
+      </div>
+      <div class="field">
+        <label>燃料種別 <span style="color:var(--c-danger)">*</span></label>
+        <select><option selected>レギュラー</option><option>ハイオク</option><option>軽油</option></select>
+      </div>
+      <div class="field">
+        <label>タンク容量(任意)</label>
+        <div class="inrow"><input type="number" inputmode="decimal" class="num-lg" value="41"><span class="unit">L</span></div>
+        <div class="hint">給油量の入力チェックに使われます</div>
+      </div>
+      <div class="field">
+        <label>車検満了日(任意)</label>
+        <input type="date" value="2027-06-14">
+      </div>
+      <button class="btn primary" onclick="toggleVForm(false);toast('車両を保存しました')">保存する</button>
+      <button class="btn danger-text" onclick="toggleVForm(false);toast('車両をアーカイブしました(記録は保持されます)')">この車両をアーカイブ(手放した)</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================== S-09 設定・データ管理 -->
+<section class="screen" id="s09" data-tab="settings">
+  <header class="appbar">
+    <span class="title">設定・データ管理</span>
+  </header>
+
+  <div class="body-pad" style="gap:16px">
+    <div>
+      <h2 class="card-h" style="margin:0 4px 8px">車両</h2>
+      <div class="list">
+        <button class="row" onclick="go('s08')">
+          <div class="grow"><div style="font-weight:700">車両管理</div><div class="sub">登録3台 ・ 選択中: <span class="js-vname">ノート</span></div></div>
+          <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="card-h" style="margin:0 4px 8px">バックアップ</h2>
+      <div class="list">
+        <button class="row" onclick="toast('全車両のデータをJSONで書き出しました(モック)')">
+          <div class="grow"><div style="font-weight:700">JSONエクスポート</div><div class="sub">全データの完全バックアップ(インポート用)</div></div>
+          <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        </button>
+        <button class="row" onclick="toast('全車両のデータをCSVで書き出しました(モック)')">
+          <div class="grow"><div style="font-weight:700">CSVエクスポート</div><div class="sub">表計算ソフトで開ける形式</div></div>
+          <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        </button>
+        <div class="row disabled-row" style="cursor:default">
+          <div class="grow"><div style="font-weight:700">データインポート</div><div class="sub">フェーズ2で提供予定</div></div>
+        </div>
+      </div>
+      <p class="setrow-note" style="padding-top:8px">データはこの端末の中だけに保存されています。機種変更や端末故障に備えて、定期的なエクスポートをおすすめします(最終バックアップ: 2026/06/15)。</p>
+    </div>
+
+    <div>
+      <h2 class="card-h" style="margin:0 4px 8px">リマインダー</h2>
+      <div class="list">
+        <div class="row disabled-row" style="cursor:default">
+          <div class="grow"><div style="font-weight:700">リマインダー設定</div><div class="sub">フェーズ2で提供予定(オイル交換 5,000km/6ヶ月 など)</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="card-h" style="margin:0 4px 8px">アプリ情報</h2>
+      <div class="list">
+        <div class="row" style="cursor:default">
+          <div class="grow"><div style="font-weight:700">バージョン</div></div>
+          <span class="sub num">0.1.0 (MVP)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ================================================== タブバー -->
+<nav class="tabbar" id="tabbar">
+  <button class="tab active" data-tab="home" onclick="go('s01')">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+    ホーム
+  </button>
+  <button class="tab" data-tab="fuel" onclick="go('s03')">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+    給油
+  </button>
+  <button class="tab" data-tab="maint" onclick="go('s06')">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    メンテ
+  </button>
+  <button class="tab" data-tab="settings" onclick="go('s09')">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+    設定
+  </button>
+</nav>
+
+<!-- FAB(S-03 / S-06 で表示) -->
+<button class="fab" data-for="s03" onclick="go('s02')" aria-label="給油を記録">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+<button class="fab" data-for="s06" onclick="go('s05')" aria-label="メンテを記録">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- ================================================== S-11 車両切り替えシート -->
+<div class="overlay" id="sheet" onclick="if(event.target===this)closeSheet()">
+  <div class="sheet" role="dialog" aria-label="車両を切り替え">
+    <div class="grab"></div>
+    <h3>車両を切り替え</h3>
+    <button class="vrow on" id="vrow-note" onclick="selectVehicle('note')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+      <span class="grow">ノート<br><span class="sub">日産 E13 ・ ODO 34,512 km</span></span>
+      <svg class="check" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </button>
+    <button class="vrow" id="vrow-jimny" onclick="selectVehicle('jimny')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+      <span class="grow">ジムニー<br><span class="sub">スズキ JB64 ・ ODO 52,830 km</span></span>
+      <svg class="check" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </button>
+    <button class="vrow" id="vrow-mt07" onclick="selectVehicle('mt07')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="16" r="3"/><circle cx="19" cy="16" r="3"/><path d="M7.5 14h5l4-4H6"/><path d="M8.5 14l4-4"/><path d="M13 6h2l1.5 3 2 4"/></svg>
+      <span class="grow">MT-07<br><span class="sub">ヤマハ ・ ODO 18,240 km</span></span>
+      <svg class="check" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </button>
+    <button class="vrow" style="border-bottom:0;color:var(--c-primary)" onclick="closeSheet();go('s08')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span class="grow">車両を追加</span>
+    </button>
+  </div>
+</div>
+
+<!-- 削除確認ダイアログ -->
+<div class="overlay center" id="confirm" onclick="if(event.target===this)closeConfirm()">
+  <div class="dialog">
+    <h3>この給油記録を削除しますか?</h3>
+    <p>2026/07/01 ・ 32.40L ・ ¥5,180<br>削除すると前後の区間の燃費が再計算されます。</p>
+    <div class="acts">
+      <button class="btn ghost" onclick="closeConfirm()">キャンセル</button>
+      <button class="btn dngr" onclick="closeConfirm();toast('記録を削除しました');go('s03')">削除する</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+</div><!-- /.phone -->
+
+<script>
+/* ============ ダミーデータ(車2台+バイク1台) ============ */
+const VEHICLES = {
+  note: {
+    name:'ノート', sub:'日産 E13', type:'car', prevOdo:34512, prevUnit:160, tank:41,
+    recent:'19.2', avg:18.6, diff:'+0.8', diffUp:true, month:'¥7,124',
+    graph:[18.9,19.4,18.2,17.9,19.6,18.8,17.9,18.4,19.9,18.7,18.4,19.2],
+    dates:['2/14','3/1','3/18','4/2','4/19','5/6','5/24','6/2','6/13','6/21','6/28','7/1'],
+  },
+  jimny: {
+    name:'ジムニー', sub:'スズキ JB64', type:'car', prevOdo:52830, prevUnit:158, tank:40,
+    recent:'13.4', avg:13.1, diff:'+0.2', diffUp:true, month:'¥6,120',
+    graph:[13.8,12.9,13.2,13.6,12.8,13.1,13.5,12.7,13.0,13.4,13.2,13.4],
+    dates:['1/20','2/8','2/26','3/14','3/30','4/16','5/2','5/19','6/1','6/12','6/22','6/30'],
+  },
+  mt07: {
+    name:'MT-07', sub:'ヤマハ', type:'bike', prevOdo:18240, prevUnit:160, tank:14,
+    recent:'24.8', avg:24.1, diff:'-0.3', diffUp:false, month:'¥3,860',
+    graph:[23.8,24.5,25.2,23.9,24.6,23.5,24.9,23.8,24.2,25.1,24.4,24.8],
+    dates:['1/11','2/2','2/23','3/15','4/4','4/25','5/13','5/31','6/8','6/15','6/22','6/29'],
+  }
+};
+let current = 'note';
+const $ = (s)=>document.querySelector(s);
+const $$ = (s)=>document.querySelectorAll(s);
+const fmt = (n)=>Number(n).toLocaleString('ja-JP');
+
+/* ============ 車両タイプアイコン(SVG線画・デザインガイド準拠) ============ */
+const ICON_PATHS = {
+  car: '<path d="M5 11l1.6-4.5A2 2 0 0 1 8.5 5h7a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>',
+  bike: '<circle cx="5" cy="16" r="3"/><circle cx="19" cy="16" r="3"/><path d="M7.5 14h5l4-4H6"/><path d="M8.5 14l4-4"/><path d="M13 6h2l1.5 3 2 4"/>'
+};
+function iconSvg(type, size, stroke){
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="'+(stroke||'currentColor')+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + (ICON_PATHS[type]||ICON_PATHS.car) + '</svg>';
+}
+function refreshVehicleIcons(){
+  const v = VEHICLES[current];
+  $$('.js-vicon').forEach(e=>{
+    e.innerHTML = iconSvg(v.type, e.dataset.size||20, e.dataset.stroke);
+  });
+}
+
+/* ============ 画面遷移 ============ */
+function go(id){
+  $$('.screen').forEach(s=>s.classList.toggle('active', s.id===id));
+  const sc = document.getElementById(id);
+  const modal = sc.dataset.modal === '1';
+  $('#tabbar').style.display = modal ? 'none' : 'flex';
+  $$('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===sc.dataset.tab));
+  $$('.fab').forEach(f=>f.style.display = (f.dataset.for===id) ? 'flex' : 'none');
+  $('#main').scrollTop = 0;
+  if(id==='s07') renderGraph();
+}
+
+/* ============ S-11 車両切り替えシート ============ */
+function openSheet(){ $('#sheet').classList.add('show'); }
+function closeSheet(){ $('#sheet').classList.remove('show'); }
+function selectVehicle(id){
+  const changed = (id !== current);
+  current = id;
+  const v = VEHICLES[id];
+  $$('.js-vname').forEach(e=>e.textContent = v.name);
+  $$('.js-prevodo').forEach(e=>e.textContent = fmt(v.prevOdo));
+  $('#f-odo').placeholder = v.prevOdo;
+  $('#home-recent').textContent = v.recent;
+  $('#home-avg').textContent = v.avg.toFixed(1);
+  $('#home-month').textContent = v.month;
+  const d = $('#home-diff');
+  d.textContent = v.diff;
+  d.className = v.diffUp ? 'trend-up' : 'trend-down';
+  Object.keys(VEHICLES).forEach(k=>{
+    const r = $('#vrow-'+k);
+    if(r) r.classList.toggle('on', id===k);
+    const m = $('.js-selmark-'+k);
+    if(m) m.style.display = (id===k) ? '' : 'none';
+  });
+  refreshVehicleIcons();
+  renderSpark(); renderGraph(); calcFuel();
+  closeSheet();
+  if(changed) toast(v.name + ' に切り替えました');
+}
+
+/* ============ S-02 給油入力: 自動計算・バリデーション ============ */
+function calcFuel(){
+  const v = VEHICLES[current];
+  const odo = parseFloat($('#f-odo').value);
+  const amt = parseFloat($('#f-amount').value);
+  const price = parseFloat($('#f-price').value);
+  const full = $('#f-full').checked;
+
+  // 単価の自動計算(金額入力時のみ表示。未入力時は案内文+前回単価)
+  $('#f-unit-line').innerHTML = (amt>0 && price>0)
+    ? '単価 ≒ <span class="num">' + (Math.round(price/amt*10)/10) + '</span> 円/L(自動計算)'
+    : '単価は金額を入力すると自動計算されます(前回 <span class="num">' + v.prevUnit + '</span> 円/L)';
+
+  // ODO逆行の警告(保存はブロックしない)
+  $('#w-odo').classList.toggle('show', !isNaN(odo) && odo < v.prevOdo);
+
+  // 満タンOFF時の補足
+  $('#fulltank-note').textContent = full
+    ? '満タン給油ごとに燃費が確定します'
+    : 'OFF: 燃費は次の満タン給油時にまとめて計算されます';
+
+  // 燃費プレビュー(満タンかつ走行距離プラスのとき)
+  const wfe = $('#w-fe');
+  wfe.classList.remove('show');
+  if(full && !isNaN(odo) && odo > v.prevOdo && amt > 0){
+    const km = odo - v.prevOdo;
+    const fe = Math.round(km/amt*10)/10;
+    $('#fe-val').textContent = fe.toFixed(1);
+    $('#fe-km').textContent = fmt(km);
+    $('#fe-preview').style.display = 'flex';
+    if(fe < 1 || fe > 60){
+      wfe.textContent = '燃費が ' + fe.toFixed(1) + ' km/L になります。ODO・給油量の入力をご確認ください';
+      wfe.classList.add('show');
+    }
+  } else {
+    $('#fe-preview').style.display = 'none';
+  }
+
+  // タンク容量超過の警告
+  if(amt > v.tank){
+    wfe.textContent = '給油量がタンク容量(' + v.tank + 'L)を超えています';
+    wfe.classList.add('show');
+  }
+
+  // 必須2項目チェック(ODO・給油量)→ 保存ボタン活性(金額は任意)
+  const missing = [odo, amt].filter(x=>isNaN(x)||x<=0).length;
+  $('#f-save').disabled = missing > 0;
+  $('#f-save-note').textContent = missing > 0
+    ? 'あと' + missing + '項目(必須はODO・給油量のみ。金額は任意)'
+    : '入力OK。保存すると燃費が計算されます';
+}
+function saveFuel(){
+  const full = $('#f-full').checked;
+  const feTxt = (full && $('#fe-preview').style.display==='flex')
+    ? '保存しました(燃費 ' + $('#fe-val').textContent + ' km/L)'
+    : '保存しました(燃費は次の満タン給油で確定します)';
+  toast(feTxt);
+  $('#f-odo').value = ''; $('#f-amount').value = ''; $('#f-price').value = '';
+  $('#f-full').checked = true; calcFuel();
+  go('s01');
+}
+
+/* ============ S-05 種別選択 / S-06 フィルタ ============ */
+function pickType(el){
+  $$('#mtypes .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+}
+function filterMaint(el, cat){
+  $$('#mfilters .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  $$('#mlist .row').forEach(r=>{
+    r.style.display = (cat==='all' || r.dataset.cat===cat) ? 'flex' : 'none';
+  });
+}
+function pickPeriod(el){
+  el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  toast('期間: ' + el.textContent + '(モックでは同じデータを表示)');
+}
+
+/* ============ S-07 グラフ描画(SVG) ============ */
+function graphGeometry(data){
+  const lo = Math.floor(Math.min(...data) - 0.6);
+  const hi = Math.ceil(Math.max(...data) + 0.6);
+  return { lo, hi, x:(i)=> 36 + i*(316/(data.length-1)), y:(v)=> 180 - (v-lo)/(hi-lo)*150 };
+}
+function renderGraph(){
+  const v = VEHICLES[current];
+  const g = graphGeometry(v.graph);
+  const avg = v.avg;
+  let s = '';
+  // Y軸目盛り
+  for(let t=g.lo; t<=g.hi; t++){
+    const y = g.y(t);
+    s += '<line x1="36" x2="352" y1="'+y+'" y2="'+y+'" stroke="#E3E9F0" stroke-width="1"/>';
+    s += '<text x="30" y="'+(y+4)+'" text-anchor="end" font-size="10" fill="#617082" font-weight="600">'+t+'</text>';
+  }
+  // 平均線
+  const ay = g.y(avg);
+  s += '<line x1="36" x2="352" y1="'+ay+'" y2="'+ay+'" stroke="#B26E00" stroke-width="1.5" stroke-dasharray="5 4"/>';
+  s += '<text x="350" y="'+(ay-6)+'" text-anchor="end" font-size="10" fill="#B26E00" font-weight="700">平均 '+avg.toFixed(1)+'</text>';
+  // 折れ線
+  const pts = v.graph.map((d,i)=> g.x(i)+','+g.y(d)).join(' ');
+  s += '<polyline points="'+pts+'" fill="none" stroke="#1D5BBF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  // 点(タップ可能)
+  v.graph.forEach((d,i)=>{
+    s += '<circle class="gdot" cx="'+g.x(i)+'" cy="'+g.y(d)+'" r="9" fill="transparent" onclick="tapDot('+i+')"/>';
+    s += '<circle cx="'+g.x(i)+'" cy="'+g.y(d)+'" r="4" fill="#fff" stroke="#1D5BBF" stroke-width="2.5" pointer-events="none"/>';
+  });
+  // X軸ラベル(間引き表示)
+  v.dates.forEach((d,i)=>{
+    if(i%3===0 || i===v.dates.length-1){
+      s += '<text x="'+g.x(i)+'" y="200" text-anchor="middle" font-size="10" fill="#617082">'+d+'</text>';
+    }
+  });
+  $('#graph').innerHTML = s;
+  $('#g-avg').textContent = avg.toFixed(1);
+  $('#g-best').textContent = Math.max(...v.graph).toFixed(1);
+  $('#g-worst').textContent = Math.min(...v.graph).toFixed(1);
+  $('#gtip').classList.remove('show');
+}
+function tapDot(i){
+  const v = VEHICLES[current];
+  $('#gtip-date').textContent = v.dates[i];
+  $('#gtip-val').textContent = v.graph[i].toFixed(1);
+  $('#gtip').classList.add('show');
+}
+/* ホームのミニグラフ */
+function renderSpark(){
+  const v = VEHICLES[current];
+  const data = v.graph;
+  const lo = Math.min(...data)-0.3, hi = Math.max(...data)+0.3;
+  const x = (i)=> 4 + i*(312/(data.length-1));
+  const y = (d)=> 50 - (d-lo)/(hi-lo)*44;
+  const pts = data.map((d,i)=> x(i)+','+y(d)).join(' ');
+  let s = '<polyline points="'+pts+'" fill="none" stroke="#1D5BBF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  s += '<circle cx="'+x(data.length-1)+'" cy="'+y(data[data.length-1])+'" r="3.5" fill="#F5A524" stroke="#fff" stroke-width="1.5"/>';
+  $('#home-spark').innerHTML = s;
+}
+
+/* ============ 車両編集フォーム(S-08): 車両タイプ・メーカー候補 ============ */
+const MAKERS = {
+  car: ['トヨタ','ホンダ','日産','マツダ','スバル','三菱','スズキ','ダイハツ','レクサス',
+        'メルセデス・ベンツ','BMW','フォルクスワーゲン','アウディ','ボルボ'],
+  bike: ['ホンダ','ヤマハ','スズキ','カワサキ','ハーレーダビッドソン','BMW','ドゥカティ','トライアンフ','KTM']
+};
+function pickVType(el, type){
+  $$('#v-type-seg button').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  buildMakerOptions(type);
+}
+function buildMakerOptions(type, selected){
+  const sel = $('#v-maker');
+  let html = '<option value="">選択してください</option>';
+  MAKERS[type].forEach(m=>{
+    html += '<option value="'+m+'"'+(m===selected?' selected':'')+'>'+m+'</option>';
+  });
+  html += '<option value="__other">その他(手入力)</option>';
+  sel.innerHTML = html;
+  onMakerChange();
+}
+function onMakerChange(){
+  $('#v-maker-free-field').style.display = ($('#v-maker').value==='__other') ? 'block' : 'none';
+}
+
+/* ============ 車両編集フォームの開閉 / ダイアログ / トースト ============ */
+function toggleVForm(show){
+  $('#vform').style.display = show ? 'flex' : 'none';
+  if(show) $('#vform').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function openConfirm(){ $('#confirm').classList.add('show'); }
+function closeConfirm(){ $('#confirm').classList.remove('show'); }
+let toastTimer = null;
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ============ 初期化 ============ */
+(function init(){
+  const today = new Date().toISOString().slice(0,10);
+  $('#f-date').value = today;   // 給油日は今日が初期値
+  $('#m-date').value = today;   // 実施日も今日が初期値
+  refreshVehicleIcons();        // 車両タイプアイコン(車/バイク)を差し込み
+  buildMakerOptions('car', '日産'); // 車両編集フォームのメーカー候補(ノートの編集サンプル)
+  renderSpark();
+  renderGraph();
+  calcFuel();
+})();
+</script>
+</body>
+</html>
