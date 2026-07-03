@@ -196,13 +196,11 @@ export function GraphScreen() {
               <ResponsiveContainer width="100%" height={230}>
                 <LineChart
                   data={points}
-                  margin={{ top: 12, right: 16, bottom: 0, left: -16 }}
+                  margin={{ top: 12, right: 16, bottom: 0, left: 0 }}
                   onClick={(state) => {
-                    // Recharts 3 の型にはタップ時の activePayload が含まれないためキャストして参照
-                    const payload = (
-                      state as unknown as { activePayload?: { payload?: Point }[] }
-                    )?.activePayload?.[0]?.payload
-                    if (payload) handlePointTap(payload)
+                    // Recharts 3: タップ位置に最も近いデータ点の index が activeIndex に入る
+                    const idx = Number(state?.activeIndex)
+                    if (Number.isInteger(idx) && points[idx]) handlePointTap(points[idx])
                   }}
                 >
                   <CartesianGrid stroke="#E3E9F0" vertical={false} />
@@ -251,10 +249,6 @@ export function GraphScreen() {
                       stroke: '#fff',
                       strokeWidth: 2,
                       cursor: 'pointer',
-                      onClick: (_e: unknown, dotPayload: unknown) => {
-                        const p = (dotPayload as { payload?: Point } | undefined)?.payload
-                        if (p) handlePointTap(p)
-                      },
                     }}
                     isAnimationActive={false}
                   />
