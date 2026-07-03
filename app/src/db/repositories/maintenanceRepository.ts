@@ -1,0 +1,98 @@
+/**
+ * メンテナンス記録リポジトリ(§5.3 MaintenanceRecord / S-05・S-06)
+ */
+import { db, type AppDatabase } from '../database'
+import type { MaintenanceRecord, MaintenanceType } from '../../types/models'
+import { newId, nowIso, stripUndefined } from './helpers'
+
+/** メンテナンス記録の新規作成入力 */
+export interface MaintenanceRecordInput {
+  vehicleId: string
+  type: MaintenanceType
+  /** type === 'other' のときの自由記述名 */
+  typeLabel?: string
+  /** 'YYYY-MM-DD' */
+  date: string
+  odo: number
+  /** 費用(円)。0円可・不明は省略または null */
+  cost?: number | null
+  shopName?: string
+  memo?: string
+}
+
+/** 編集可能なフィールド */
+export type MaintenanceRecordUpdate = Partial<
+  Omit<MaintenanceRecord, 'id' | 'createdAt' | 'updatedAt'>
+>
+
+/** 一覧の並び: 日付降順 → 同日はODO降順(S-06) */
+const byDateDesc = (a: MaintenanceRecord, b: MaintenanceRecord): number =>
+  b.date.localeCompare(a.date) || b.odo - a.odo || b.createdAt.localeCompare(a.createdAt)
+
+export function createMaintenanceRepository(database: AppDatabase) {
+  return {
+    async create(input: MaintenanceRecordInput): Promise<MaintenanceRecord> {
+      const now = nowIso()
+      const record: MaintenanceRecord = {
+        id: newId(),
+        createdAt: now,
+        updatedAt: now,
+        vehicleId: input.vehicleId,
+        type: input.type,
+        date: input.date,
+        odo: input.odo,
+        cost: input.cost ?? null,
+        ...stripUndefined({
+          typeLabel: input.typeLabel,
+          shopName: input.shopName,
+          memo: input.memo,
+        }),
+      }
+      await database.maintenanceRecords.add(record)
+      return record
+    },
+
+    async getById(id: string): Promise<MaintenanceRecord | undefined> {
+      return database.maintenanceRecords.get(id)
+    },
+
+    /** 車両のメンテ履歴(日付降順)。type 指定で種別フィルタ(S-06) */
+    async listByVehicle(vehicleId: string, type?: MaintenanceType): Promise<MaintenanceRecord[]> {
+      const records = type
+        ? await database.maintenanceRecords
+            .where('[vehicleId+type]')
+            .equals([vehicleId, type])
+            .toArray()
+        : await database.maintenanceRecords.where('vehicleId').equals(vehicleId).toArray()
+      return records.sort(byDateDesc)
+    },
+
+    /**
+     * 同種別の最新実施記録(「前回オイル交換いつ?」/ リマインダー判定の基点)。
+     * 無ければ undefined
+     */
+    async latestByType(
+      vehicleId: string,
+      type: MaintenanceType,
+    ): Promise<MaintenanceRecord | undefined> {
+      const records = await this.listByVehicle(vehicleId, type)
+      return records[0]
+    },
+
+    async update(id: string, patch: MaintenanceRecordUpdate): Promise<MaintenanceRecord> {
+      const changes = stripUndefined({ ...patch, updatedAt: nowIso() })
+      const updated = await database.maintenanceRecords.update(id, changes)
+      if (updated === 0) throw new Error(`メンテナンス記録が見つかりません: ${id}`)
+      return (await database.maintenanceRecords.get(id))!
+    },
+
+    async remove(id: string): Promise<void> {
+      await database.maintenanceRecords.delete(id)
+    },
+  }
+}
+
+export type MaintenanceRepository = ReturnType<typeof createMaintenanceRepository>
+
+/** アプリ本体で使うシングルトン */
+export const maintenanceRepository = createMaintenanceRepository(db)
