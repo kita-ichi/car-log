@@ -95,6 +95,61 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
     expect(codes(result)).not.toContain('economy_out_of_range')
   })
 
+  it('給油日未入力はエラー(保存不可)', () => {
+    const result = validateFuelRecord({ ...validInput, date: null })
+    expect(codes(result)).toContain('date_required')
+    expect(result.canSave).toBe(false)
+  })
+
+  it('給油量0・マイナスはエラー(保存不可)', () => {
+    expect(codes(validateFuelRecord({ ...validInput, fuelAmount: 0 }))).toContain('invalid_number')
+    expect(validateFuelRecord({ ...validInput, fuelAmount: 0 }).canSave).toBe(false)
+    expect(validateFuelRecord({ ...validInput, fuelAmount: -5 }).canSave).toBe(false)
+  })
+
+  it('ODOマイナスはエラー、ODO=0は許容', () => {
+    expect(validateFuelRecord({ ...validInput, odo: -1 }).canSave).toBe(false)
+    expect(validateFuelRecord({ ...validInput, odo: 0 }).canSave).toBe(true)
+  })
+
+  it('燃費境界値: ちょうど1km/L・60km/Lは警告なし、範囲外(0.5・61)は警告', () => {
+    const existingRecords: FuelRecordForCalc[] = [
+      { id: 'a', date: '2026-06-01', odo: 10000, fuelAmount: 40, isFullTank: true },
+    ]
+    const check = (odo: number, fuelAmount: number) =>
+      codes(validateFuelRecord({ ...validInput, odo, fuelAmount }, { existingRecords }))
+
+    expect(check(10001, 1)).not.toContain('economy_out_of_range') // ちょうど 1 km/L
+    expect(check(10060, 1)).not.toContain('economy_out_of_range') // ちょうど 60 km/L
+    expect(check(10001, 2)).toContain('economy_out_of_range') // 0.5 km/L(下限外)
+    expect(check(10061, 1)).toContain('economy_out_of_range') // 61 km/L(上限外)
+  })
+
+  it('タンク容量境界値: ちょうど容量までは警告なし、超えたら警告', () => {
+    expect(
+      codes(validateFuelRecord({ ...validInput, fuelAmount: 40 }, { tankCapacity: 40 })),
+    ).not.toContain('tank_capacity_exceeded')
+    expect(
+      codes(validateFuelRecord({ ...validInput, fuelAmount: 40.01 }, { tankCapacity: 40 })),
+    ).toContain('tank_capacity_exceeded')
+  })
+
+  it('ODO同値(前回ODOと同じ)は逆行警告を出さない', () => {
+    const result = validateFuelRecord({ ...validInput, odo: 10500 }, { previousOdo: 10500 })
+    expect(codes(result)).not.toContain('odo_reversal')
+  })
+
+  it('部分給油(満タンOFF)では燃費範囲警告は出ない(燃費未確定のため)', () => {
+    const existingRecords: FuelRecordForCalc[] = [
+      { id: 'a', date: '2026-06-01', odo: 10000, fuelAmount: 40, isFullTank: true },
+    ]
+    const result = validateFuelRecord(
+      { ...validInput, odo: 10020, fuelAmount: 25, isFullTank: false },
+      { existingRecords },
+    )
+    expect(codes(result)).not.toContain('economy_out_of_range')
+  })
+
   it('エラーと警告が同時に発生し得る(未入力エラー + 容量超過警告)', () => {
     const result = validateFuelRecord(
       { date: '2026-07-03', odo: null, fuelAmount: 45, isFullTank: true },

@@ -262,6 +262,107 @@ describe('fuelRecordRepository', () => {
     expect(changed.unitPrice).toBe(155)
   })
 
+  it('給油量のみ編集した場合も単価が再計算される(総額は維持)', async () => {
+    const { fuelRecords } = setup()
+    const record = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-07-01',
+      odo: 10000,
+      fuelAmount: 40,
+      totalPrice: 6000, // 単価 150
+    })
+    const changed = await fuelRecords.update(record.id, { fuelAmount: 30 })
+    expect(changed.totalPrice).toBe(6000)
+    expect(changed.unitPrice).toBe(200) // 6000 ÷ 30
+  })
+
+  it('ある車両の記録の追加・削除が別車両の燃費キャッシュに影響しない', async () => {
+    const { fuelRecords } = setup()
+    // v1(車): 確定燃費 20 km/L
+    await fuelRecords.create({ vehicleId: 'v1', date: '2026-06-01', odo: 10000, fuelAmount: 40 })
+    const v1full = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-15',
+      odo: 10500,
+      fuelAmount: 25,
+    })
+    // v2(バイク): 確定燃費 25 km/L
+    await fuelRecords.create({ vehicleId: 'v2', date: '2026-06-05', odo: 18000, fuelAmount: 10 })
+    const v2full = await fuelRecords.create({
+      vehicleId: 'v2',
+      date: '2026-06-20',
+      odo: 18250,
+      fuelAmount: 10,
+    })
+    expect(v1full.fuelEconomy).toBe(20)
+    expect(v2full.fuelEconomy).toBe(25)
+
+    // v2 の基準記録を削除 → v2 は未確定に戻るが、v1 は変化しない
+    const v2first = (await fuelRecords.listByVehicle('v2', 'asc'))[0]
+    await fuelRecords.remove(v2first.id)
+    expect((await fuelRecords.getById(v2full.id))?.fuelEconomy).toBeNull()
+    expect((await fuelRecords.getById(v1full.id))?.fuelEconomy).toBe(20)
+  })
+
+  it('記録を別車両へ移すと移動元・移動先の両方の燃費が再計算される', async () => {
+    const { fuelRecords } = setup()
+    await fuelRecords.create({ vehicleId: 'v1', date: '2026-06-01', odo: 10000, fuelAmount: 40 })
+    const moved = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-15',
+      odo: 10500,
+      fuelAmount: 25,
+    })
+    const v1last = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-30',
+      odo: 10900,
+      fuelAmount: 20,
+    })
+    expect(moved.fuelEconomy).toBe(20) // 500/25
+    expect(v1last.fuelEconomy).toBe(20) // 400/20
+
+    // 中間の満タン記録を v2 へ移動(誤記録の付け替え)
+    await fuelRecords.update(moved.id, { vehicleId: 'v2' })
+
+    // 移動先: v2 には基準が無いので未確定に
+    expect((await fuelRecords.getById(moved.id))?.fuelEconomy).toBeNull()
+    // 移動元: v1 の最終記録は区間統合で再計算(900km ÷ 20L = 45)
+    expect((await fuelRecords.getById(v1last.id))?.fuelEconomy).toBe(45)
+    // 一覧も混ざらない
+    expect((await fuelRecords.listByVehicle('v1')).map((r) => r.id)).not.toContain(moved.id)
+    expect((await fuelRecords.listByVehicle('v2')).map((r) => r.id)).toEqual([moved.id])
+  })
+
+  it('同一日付・同一ODOの重複記録も保存でき、燃費計算が壊れない', async () => {
+    const { fuelRecords } = setup()
+    await fuelRecords.create({ vehicleId: 'v1', date: '2026-06-01', odo: 10000, fuelAmount: 40 })
+    const dup1 = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-10',
+      odo: 10300,
+      fuelAmount: 10,
+      isFullTank: false,
+    })
+    const dup2 = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-10',
+      odo: 10300,
+      fuelAmount: 10,
+      isFullTank: false,
+    })
+    const full = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-06-20',
+      odo: 10600,
+      fuelAmount: 10,
+    })
+    expect(await fuelRecords.listByVehicle('v1')).toHaveLength(4)
+    expect(dup1.fuelEconomy).toBeNull()
+    expect(dup2.fuelEconomy).toBeNull()
+    expect(full.fuelEconomy).toBe(20) // 600 ÷ (10+10+10)
+  })
+
   it('一覧は日付降順(既定)・昇順も選択可。車両ごとに分離される', async () => {
     const { fuelRecords } = setup()
     await fuelRecords.create({ vehicleId: 'v1', date: '2026-06-01', odo: 10000, fuelAmount: 40 })
@@ -366,5 +467,23 @@ describe('settingsRepository', () => {
 
     await settings.setSelectedVehicleId(null)
     expect(await settings.getSelectedVehicleId()).toBeNull()
+  })
+
+  it('選択中の車両IDは上書き保存される(車両切り替え)', async () => {
+    const { settings } = setup()
+    await settings.setSelectedVehicleId('v1')
+    await settings.setSelectedVehicleId('v2')
+    expect(await settings.getSelectedVehicleId()).toBe('v2')
+  })
+
+  it('DBを開き直しても選択中の車両IDが復元される(再起動相当)', async () => {
+    const dbName = `test-db-${crypto.randomUUID()}`
+    const db1 = new AppDatabase(dbName)
+    await createSettingsRepository(db1).setSelectedVehicleId('v1')
+    db1.close()
+
+    // 同名DBを開き直す = アプリ再起動相当
+    const db2 = new AppDatabase(dbName)
+    expect(await createSettingsRepository(db2).getSelectedVehicleId()).toBe('v1')
   })
 })

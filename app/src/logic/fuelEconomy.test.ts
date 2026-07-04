@@ -139,6 +139,54 @@ describe('calculateFuelEconomies(満タン法)', () => {
     const { perRecord } = calculateFuelEconomies(records)
     expect(perRecord.get('b')).toBe(16.67)
   })
+
+  it('給油量0の満タン給油は燃費を確定せず、新しい基準点として扱う(0除算しない)', () => {
+    const records = [
+      rec('a', '2026-06-01', 10000, 40),
+      rec('b', '2026-06-10', 10500, 0), // 給油量0(異常データ)
+      rec('c', '2026-06-20', 11000, 25),
+    ]
+    const { perRecord, intervals } = calculateFuelEconomies(records)
+    expect(perRecord.get('b')).toBeNull() // 0除算・Infinity にならない
+    expect(perRecord.get('c')).toBe(20) // (11000-10500) ÷ 25 — b が新基準
+    expect(intervals).toHaveLength(1)
+    expect(Number.isFinite(intervals[0].economy)).toBe(true)
+  })
+
+  it('同一日時の重複記録(同date・同odoの部分給油)も給油量はすべて積算される', () => {
+    const records = [
+      rec('a', '2026-06-01', 10000, 40),
+      rec('b', '2026-06-10', 10300, 10, false),
+      rec('c', '2026-06-10', 10300, 10, false), // 完全に同じ日付・ODOの重複
+      rec('d', '2026-06-20', 10600, 10),
+    ]
+    const { perRecord, intervals } = calculateFuelEconomies(records)
+    expect(perRecord.get('b')).toBeNull()
+    expect(perRecord.get('c')).toBeNull()
+    expect(perRecord.get('d')).toBe(20) // 600 ÷ (10+10+10)
+    expect(intervals[0].fuelUsed).toBe(30)
+  })
+
+  it('同一date・同一odoの記録は createdAt で安定ソートされる', () => {
+    const records: FuelRecordForCalc[] = [
+      { id: 'late', date: '2026-06-10', odo: 10300, fuelAmount: 10, isFullTank: false, createdAt: '2026-06-10T12:00:00.000Z' },
+      { id: 'early', date: '2026-06-10', odo: 10300, fuelAmount: 10, isFullTank: false, createdAt: '2026-06-10T09:00:00.000Z' },
+    ]
+    expect(sortRecordsChronologically(records).map((r) => r.id)).toEqual(['early', 'late'])
+  })
+
+  it('小数給油量の積算で浮動小数点誤差が蓄積しない', () => {
+    // 0.1 + 0.2 問題: 10.1 + 10.2 = 20.299999... にならないこと
+    const records = [
+      rec('a', '2026-06-01', 10000, 40),
+      rec('b', '2026-06-05', 10200, 10.1, false),
+      rec('c', '2026-06-10', 10400, 10.2, false),
+      rec('d', '2026-06-20', 10609, 10.2), // 合計 30.5L・走行609km → 19.97
+    ]
+    const { intervals } = calculateFuelEconomies(records)
+    expect(intervals[0].fuelUsed).toBe(30.5)
+    expect(intervals[0].economy).toBe(19.97)
+  })
 })
 
 describe('diffFuelEconomies(追加・編集・削除時の再計算)', () => {
@@ -223,6 +271,16 @@ describe('previewFuelEconomy(保存前プレビュー)', () => {
   it('既存記録が無い(初回給油)ならプレビューしない', () => {
     expect(previewFuelEconomy([], { odo: 10600, fuelAmount: 20, isFullTank: true })).toBeNull()
   })
+
+  it('入力ODOが前回満タン以下(逆行・同値)ならプレビューしない', () => {
+    expect(previewFuelEconomy(existing, { odo: 9500, fuelAmount: 20, isFullTank: true })).toBeNull()
+    expect(previewFuelEconomy(existing, { odo: 10000, fuelAmount: 20, isFullTank: true })).toBeNull()
+  })
+
+  it('ODO・給油量が0以下ならプレビューしない', () => {
+    expect(previewFuelEconomy(existing, { odo: 0, fuelAmount: 20, isFullTank: true })).toBeNull()
+    expect(previewFuelEconomy(existing, { odo: 10600, fuelAmount: 0, isFullTank: true })).toBeNull()
+  })
 })
 
 describe('calculateFuelStats(統計)', () => {
@@ -272,6 +330,14 @@ describe('calculateMonthlyFuelCost(今月の燃料費)', () => {
       includedCount: 0,
       excludedCount: 0,
     })
+  })
+
+  it('金額0円の記録は「入力済み」として集計に含める(対象外にしない)', () => {
+    const records = [rec('a', '2026-07-01', 10000, 40, true, 0)]
+    const result = calculateMonthlyFuelCost(records, 2026, 7)
+    expect(result.total).toBe(0)
+    expect(result.includedCount).toBe(1)
+    expect(result.excludedCount).toBe(0)
   })
 })
 
