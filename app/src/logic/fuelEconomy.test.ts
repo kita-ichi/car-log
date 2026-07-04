@@ -3,6 +3,7 @@ import {
   calculateFuelEconomies,
   calculateFuelStats,
   calculateMonthlyFuelCost,
+  calculateStatsFromIntervals,
   computeTotalPrice,
   computeUnitPrice,
   diffFuelEconomies,
@@ -386,6 +387,40 @@ describe('calculateFuelStats(統計)', () => {
 
   it('記録0件でも壊れない', () => {
     expect(calculateFuelStats([]).averageEconomy).toBeNull()
+  })
+})
+
+describe('calculateStatsFromIntervals(確定区間からの統計 — S-07 期間フィルタ用)', () => {
+  const allRecords = [
+    rec('a', '2026-01-01', 10000, 40),
+    rec('b', '2026-02-01', 10500, 25), // 500/25 = 20 km/L
+    rec('c', '2026-05-01', 10800, 30), // 300/30 = 10 km/L
+    rec('d', '2026-06-01', 11200, 25), // 400/25 = 16 km/L
+  ]
+
+  it('期間フィルタ後の部分区間でも「総距離 ÷ 総給油量」で平均を計算する', () => {
+    const { intervals } = calculateFuelEconomies(allRecords)
+    // 直近2区間のみ(S-07 の期間切替を想定)
+    const filtered = intervals.filter((iv) => ['c', 'd'].includes(iv.endRecordId))
+    const stats = calculateStatsFromIntervals(filtered)
+    expect(stats.averageEconomy).toBe(12.73) // (300+400) ÷ (30+25) = 700/55
+    expect(stats.best?.endRecordId).toBe('d')
+    expect(stats.worst?.endRecordId).toBe('c')
+    expect(stats.intervalCount).toBe(2)
+  })
+
+  it('calculateFuelStats(全記録)と全区間指定で同じ結果になる', () => {
+    const { intervals } = calculateFuelEconomies(allRecords)
+    expect(calculateStatsFromIntervals(intervals)).toEqual(calculateFuelStats(allRecords))
+  })
+
+  it('区間0件ならすべて null / 0', () => {
+    expect(calculateStatsFromIntervals([])).toEqual({
+      averageEconomy: null,
+      best: null,
+      worst: null,
+      intervalCount: 0,
+    })
   })
 })
 

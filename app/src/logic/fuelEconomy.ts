@@ -205,9 +205,14 @@ export function findPreviousRecord<T extends FuelRecordForCalc>(
   return before[before.length - 1]
 }
 
-/** 統計サマリ(S-01 平均燃費 / S-07 平均・ベスト・ワースト)を計算する */
-export function calculateFuelStats(records: readonly FuelRecordForCalc[]): FuelStats {
-  const { intervals } = calculateFuelEconomies(records)
+/**
+ * 確定区間の一覧から統計サマリを計算する。
+ * S-07 のように期間フィルタ済みの区間(intervals の部分集合)にも使える。
+ * 平均燃費 = 総走行距離 ÷ 総給油量(区間燃費の単純平均ではない — 要件 §6.1)。
+ */
+export function calculateStatsFromIntervals(
+  intervals: readonly FuelEconomyInterval[],
+): FuelStats {
   if (intervals.length === 0) {
     return { averageEconomy: null, best: null, worst: null, intervalCount: 0 }
   }
@@ -229,6 +234,11 @@ export function calculateFuelStats(records: readonly FuelRecordForCalc[]): FuelS
     worst,
     intervalCount: intervals.length,
   }
+}
+
+/** 統計サマリ(S-01 平均燃費 / S-07 平均・ベスト・ワースト)を全記録から計算する */
+export function calculateFuelStats(records: readonly FuelRecordForCalc[]): FuelStats {
+  return calculateStatsFromIntervals(calculateFuelEconomies(records).intervals)
 }
 
 /**
