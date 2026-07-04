@@ -81,6 +81,9 @@ export function FuelHistoryScreen() {
                 </div>
                 {r.fuelEconomy !== null ? (
                   <span className="badge fe num">{fmtEconomy(r.fuelEconomy)} km/L</span>
+                ) : r.isFullTank ? (
+                  // B-2: 燃費計算の起点となる満タン給油(初回・ODOリセット後)は「基準」
+                  <span className="badge wait">基準</span>
                 ) : (
                   <span className="badge wait">計算待ち</span>
                 )}
@@ -91,7 +94,7 @@ export function FuelHistoryScreen() {
         )}
         {records.length > 0 && (
           <p className="sub" style={{ margin: '0 4px' }}>
-            「計算待ち」は部分給油の記録です。次の満タン給油時にまとめて燃費が確定します。金額は任意入力のため、未入力の記録は金額・単価を「—」と表示します。
+            「基準」は燃費計算の起点となる満タン給油です(次回の満タン給油から燃費が確定します)。「計算待ち」は部分給油の記録で、次の満タン給油時にまとめて燃費が確定します。金額は任意入力のため、未入力の記録は金額・単価を「—」と表示します。
           </p>
         )}
         <div style={{ height: 80 }} />

@@ -167,7 +167,7 @@ export function HomeScreen() {
               <Sparkline values={sparkValues} />
             ) : (
               <p className="sub" style={{ margin: 0 }}>
-                満タン給油を2回以上記録すると推移が表示されます
+                燃費が2回以上確定すると推移が表示されます(満タン給油3回が目安です)
               </p>
             )}
           </div>

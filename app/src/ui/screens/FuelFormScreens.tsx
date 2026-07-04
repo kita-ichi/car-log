@@ -473,7 +473,10 @@ export function FuelDetailScreen({ id }: { id: string }) {
                   {fmtEconomy(record.fuelEconomy)} <small>km/L</small>
                 </>
               ) : (
-                <span style={{ color: 'var(--c-sub)', fontSize: 15 }}>計算待ち</span>
+                <span style={{ color: 'var(--c-sub)', fontSize: 15 }}>
+                  {/* B-2: 基準点となる満タン給油は「計算待ち」ではなく「基準」 */}
+                  {record.isFullTank ? '基準' : '計算待ち'}
+                </span>
               )}
             </div>
           </div>
