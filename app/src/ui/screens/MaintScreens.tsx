@@ -5,8 +5,8 @@
  * - バリデーションは validateMaintenanceRecord()(種別・ODO・日付必須。ODO警告は保存可)
  */
 import { useEffect, useMemo, useState } from 'react'
-import type { MaintenanceRecord, MaintenanceType } from '../../types/models'
-import { fuelRecordRepository, maintenanceRepository } from '../../db/repositories'
+import type { MaintenanceRecord, MaintenanceType, Vehicle } from '../../types/models'
+import { fuelRecordRepository, maintenanceRepository, vehicleRepository } from '../../db/repositories'
 import { validateMaintenanceRecord } from '../../logic/validation'
 import { useApp } from '../AppContext'
 import {
@@ -56,11 +56,14 @@ function MaintFormFields({
   form,
   setForm,
   latestFuelOdo,
+  fixedVehicle,
 }: {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   /** 最新の給油記録のODO(ヒント表示・逆行警告に使用)。無ければ null */
   latestFuelOdo: number | null
+  /** 編集時(S-06 詳細): 記録の車両を表示専用で出す(切り替え不可)。新規時は undefined */
+  fixedVehicle?: Vehicle | null
 }) {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -76,7 +79,7 @@ function MaintFormFields({
 
   return (
     <>
-      <TargetVehicleRow />
+      <TargetVehicleRow vehicle={fixedVehicle} />
 
       <div className="card card-pad">
         <h2 className="card-h">
@@ -288,6 +291,8 @@ export function MaintNewScreen() {
 export function MaintDetailScreen({ id }: { id: string }) {
   const { navigate, showToast } = useApp()
   const [record, setRecord] = useState<MaintenanceRecord | null>(null)
+  /** この記録の対象車両(record.vehicleId)。選択中車両とは別物なので必ずこちらを使う */
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
   const [latestFuelOdo, setLatestFuelOdo] = useState<number | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -301,9 +306,13 @@ export function MaintDetailScreen({ id }: { id: string }) {
         if (!rec) navigate({ name: 'maint-list' })
         return
       }
-      const latest = await fuelRecordRepository.latestByVehicle(rec.vehicleId)
+      const [latest, veh] = await Promise.all([
+        fuelRecordRepository.latestByVehicle(rec.vehicleId),
+        vehicleRepository.getById(rec.vehicleId),
+      ])
       if (cancelled) return
       setRecord(rec)
+      setVehicle(veh ?? null)
       setLatestFuelOdo(latest?.odo ?? null)
       setForm({
         type: rec.type,
@@ -389,6 +398,7 @@ export function MaintDetailScreen({ id }: { id: string }) {
             setForm((f) => (f === null ? f : typeof update === 'function' ? update(f) : update))
           }
           latestFuelOdo={latestFuelOdo}
+          fixedVehicle={vehicle}
         />
         <button className="btn danger-text" onClick={() => setConfirmDelete(true)}>
           この記録を削除する

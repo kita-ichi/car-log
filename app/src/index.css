@@ -523,6 +523,13 @@ body {
 .target-vehicle:active {
   background: #f5f8fc;
 }
+/* 表示専用(編集画面): タップ不可の見た目 */
+.target-vehicle.static {
+  cursor: default;
+}
+.target-vehicle.static:active {
+  background: var(--c-surface);
+}
 .target-vehicle .lbl {
   font-size: 13px;
   font-weight: 700;

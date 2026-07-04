@@ -265,18 +265,36 @@ export function ConfirmDialog({
 
 /* ============ 対象車両行(入力画面の先頭。タップでS-11) ============ */
 
-export function TargetVehicleRow() {
+export function TargetVehicleRow({
+  vehicle,
+}: {
+  /**
+   * 表示専用にする車両(編集画面 S-04/S-06 用)。
+   * 指定すると選択中車両ではなくこの車両を表示し、タップしても切り替えシートを開かない
+   * (既存記録の車両は編集で変更できないため)。省略時は選択中車両+タップで S-11。
+   */
+  vehicle?: Vehicle | null
+}) {
   const { selectedVehicle, openVehicleSheet } = useApp()
-  return (
-    <button className="target-vehicle" onClick={openVehicleSheet}>
+  const target = vehicle ?? selectedVehicle
+  const inner = (
+    <>
       <span className="ticon">
-        <VehicleIcon type={selectedVehicle?.vehicleType ?? 'car'} size={22} />
+        <VehicleIcon type={target?.vehicleType ?? 'car'} size={22} />
       </span>
       <span className="grow">
         <span className="lbl">対象車両</span>
         <br />
-        <span className="nm">{selectedVehicle?.name ?? '—'}</span>
+        <span className="nm">{target?.name ?? '—'}</span>
       </span>
+    </>
+  )
+  if (vehicle !== undefined) {
+    return <div className="target-vehicle static">{inner}</div>
+  }
+  return (
+    <button className="target-vehicle" onClick={openVehicleSheet}>
+      {inner}
       <ChevronDownIcon size={20} className="chev" />
     </button>
   )

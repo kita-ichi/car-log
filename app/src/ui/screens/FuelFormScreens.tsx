@@ -7,8 +7,8 @@
  *   プレビューは previewFuelEconomy()、単価表示は computeUnitPrice()
  */
 import { useEffect, useMemo, useState } from 'react'
-import type { FuelRecord } from '../../types/models'
-import { fuelRecordRepository } from '../../db/repositories'
+import type { FuelRecord, Vehicle } from '../../types/models'
+import { fuelRecordRepository, vehicleRepository } from '../../db/repositories'
 import {
   calculateFuelEconomies,
   computeUnitPrice,
@@ -48,6 +48,7 @@ function FuelRecordFormFields({
   previousUnitPrice,
   result,
   showPreview,
+  fixedVehicle,
 }: {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
@@ -59,6 +60,8 @@ function FuelRecordFormFields({
   result: ValidationResult
   /** 保存前の燃費プレビューを表示するか(S-02 のみ) */
   showPreview: boolean
+  /** 編集時(S-04): 記録の車両を表示専用で出す(切り替え不可)。新規時は undefined */
+  fixedVehicle?: Vehicle | null
 }) {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -85,7 +88,7 @@ function FuelRecordFormFields({
 
   return (
     <>
-      <TargetVehicleRow />
+      <TargetVehicleRow vehicle={fixedVehicle} />
 
       <div className="field">
         <label htmlFor="f-date">給油日</label>
@@ -346,8 +349,10 @@ export function FuelNewScreen() {
 /* ================================================== S-04 給油詳細・編集 */
 
 export function FuelDetailScreen({ id }: { id: string }) {
-  const { selectedVehicle, navigate, showToast } = useApp()
+  const { navigate, showToast } = useApp()
   const [record, setRecord] = useState<FuelRecord | null>(null)
+  /** この記録の対象車両(record.vehicleId)。選択中車両とは別物なので必ずこちらを使う */
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
   /** 自分を除く既存記録(時系列昇順) */
   const [others, setOthers] = useState<FuelRecord[]>([])
@@ -364,9 +369,13 @@ export function FuelDetailScreen({ id }: { id: string }) {
         if (!rec) navigate({ name: 'fuel-list' })
         return
       }
-      const all = await fuelRecordRepository.listByVehicle(rec.vehicleId, 'asc')
+      const [all, veh] = await Promise.all([
+        fuelRecordRepository.listByVehicle(rec.vehicleId, 'asc'),
+        vehicleRepository.getById(rec.vehicleId),
+      ])
       if (cancelled) return
       setRecord(rec)
+      setVehicle(veh ?? null)
       setOthers(all.filter((r) => r.id !== rec.id))
       // 走行距離: 満タン法の確定区間から取得(UI側で再計算しない)
       const { intervals } = calculateFuelEconomies(all)
@@ -396,8 +405,9 @@ export function FuelDetailScreen({ id }: { id: string }) {
   }
 
   // 編集時の前回ODO: 編集中の日付の「直前」の記録(自分を除く)。
-  // 日付を変更した場合もその位置での直前記録と比較する
-  const previousOdo = findPreviousRecord(others, form.date)?.odo ?? selectedVehicle?.initialOdo ?? null
+  // 日付を変更した場合もその位置での直前記録と比較する。
+  // 基準は選択中車両ではなく「この記録の車両」(record.vehicleId)
+  const previousOdo = findPreviousRecord(others, form.date)?.odo ?? vehicle?.initialOdo ?? null
 
   const odo = toNum(form.odo)
   const fuelAmount = toNum(form.fuelAmount)
@@ -406,7 +416,7 @@ export function FuelDetailScreen({ id }: { id: string }) {
     { date: form.date, odo, fuelAmount, totalPrice, isFullTank: form.isFullTank },
     {
       previousOdo,
-      tankCapacity: selectedVehicle?.tankCapacity ?? null,
+      tankCapacity: vehicle?.tankCapacity ?? null,
       existingRecords: others,
     },
   )
@@ -490,6 +500,7 @@ export function FuelDetailScreen({ id }: { id: string }) {
           previousUnitPrice={null}
           result={result}
           showPreview={false}
+          fixedVehicle={vehicle}
         />
 
         <button className="btn danger-text" onClick={() => setConfirmDelete(true)}>
