@@ -418,8 +418,9 @@ export function FuelDetailScreen({ id }: { id: string }) {
         fuelAmount: fuelAmount!,
         totalPrice: totalPrice, // null で金額クリア(単価も自動で null に)
         isFullTank: form.isFullTank,
-        stationName: form.stationName.trim() || undefined,
-        memo: form.memo.trim() || undefined,
+        // 空欄 = null で「クリア」。undefined は「変更なし」になり旧値が残るので使わない
+        stationName: form.stationName.trim() || null,
+        memo: form.memo.trim() || null,
       })
       showToast('変更を保存しました(影響区間の燃費を再計算)')
       navigate({ name: 'fuel-list' })

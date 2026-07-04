@@ -340,12 +340,14 @@ export function MaintDetailScreen({ id }: { id: string }) {
     try {
       await maintenanceRepository.update(record.id, {
         type: form.type!,
-        typeLabel: form.type === 'other' ? form.typeLabel.trim() || undefined : undefined,
+        // 空欄 = null で「クリア」。undefined は「変更なし」になり旧値が残るので使わない。
+        // 種別を「その他」→ 他種別に変えた場合も null で旧ラベルを確実に消す
+        typeLabel: form.type === 'other' ? form.typeLabel.trim() || null : null,
         date: form.date,
         odo: toNum(form.odo)!,
         cost: toNum(form.cost),
-        shopName: form.shopName.trim() || undefined,
-        memo: form.memo.trim() || undefined,
+        shopName: form.shopName.trim() || null,
+        memo: form.memo.trim() || null,
       })
       showToast('変更を保存しました')
       navigate({ name: 'maint-list' })

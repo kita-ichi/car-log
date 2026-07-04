@@ -4,26 +4,58 @@
  */
 import { db, type AppDatabase } from '../database'
 import type { FuelType, Vehicle, VehicleType } from '../../types/models'
-import { newId, nowIso, stripUndefined } from './helpers'
+import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** 車両の新規登録入力(id・タイムスタンプ・アーカイブ状態は自動付与) */
 export interface VehicleInput {
   name: string
-  /** 登録時点のODO(km)。燃費計算の起点 */
+  /** 登録時点のODO(km)。ODO入力チェック(逆行警告)の基準 */
   initialOdo: number
   /** 省略時 'car' */
   vehicleType?: VehicleType
   /** 省略時 'regular' */
   fuelType?: FuelType
-  maker?: string
-  model?: string
-  firstRegistrationYm?: string
-  tankCapacity?: number
-  inspectionExpiry?: string
+  /** 任意項目。未設定は省略または null */
+  maker?: string | null
+  model?: string | null
+  firstRegistrationYm?: string | null
+  tankCapacity?: number | null
+  inspectionExpiry?: string | null
 }
 
-/** 編集可能なフィールド(id・createdAt は変更不可) */
-export type VehicleUpdate = Partial<Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>>
+/**
+ * 編集可能なフィールド(id・createdAt は変更不可)。
+ * 任意項目(maker / model / firstRegistrationYm / tankCapacity / inspectionExpiry)は
+ * null 指定で「クリア(値の削除)」、undefined(キー省略)で「変更なし」(§update系の共通契約)。
+ */
+export type VehicleUpdate = Partial<
+  Omit<
+    Vehicle,
+    | 'id'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'maker'
+    | 'model'
+    | 'firstRegistrationYm'
+    | 'tankCapacity'
+    | 'inspectionExpiry'
+  >
+> & {
+  maker?: string | null
+  model?: string | null
+  firstRegistrationYm?: string | null
+  tankCapacity?: number | null
+  inspectionExpiry?: string | null
+}
+
+/** null 指定で「キー削除」扱いにする任意項目 */
+const CLEARABLE_KEYS = [
+  'maker',
+  'model',
+  'firstRegistrationYm',
+  'tankCapacity',
+  'inspectionExpiry',
+] as const
 
 export function createVehicleRepository(database: AppDatabase) {
   return {
@@ -37,9 +69,9 @@ export function createVehicleRepository(database: AppDatabase) {
         isArchived: false,
         vehicleType: input.vehicleType ?? 'car',
         fuelType: input.fuelType ?? 'regular',
-        ...stripUndefined({
-          name: input.name,
-          initialOdo: input.initialOdo,
+        name: input.name,
+        initialOdo: input.initialOdo,
+        ...stripAbsent({
           maker: input.maker,
           model: input.model,
           firstRegistrationYm: input.firstRegistrationYm,
@@ -71,7 +103,8 @@ export function createVehicleRepository(database: AppDatabase) {
 
     /** 車両情報を更新して更新後のエンティティを返す */
     async update(id: string, patch: VehicleUpdate): Promise<Vehicle> {
-      const changes = stripUndefined({ ...patch, updatedAt: nowIso() })
+      // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
+      const changes = toUpdatePatch({ ...patch, updatedAt: nowIso() }, CLEARABLE_KEYS) as Partial<Vehicle>
       const updated = await database.vehicles.update(id, changes)
       if (updated === 0) throw new Error(`車両が見つかりません: ${id}`)
       return (await database.vehicles.get(id))!

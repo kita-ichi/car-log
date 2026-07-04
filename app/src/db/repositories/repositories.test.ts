@@ -55,6 +55,56 @@ describe('vehicleRepository', () => {
     expect(updated.createdAt).toBe(vehicle.createdAt)
   })
 
+  it('任意項目は「値を設定 → null でクリア → 再取得で消えている」(update系の契約)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({
+      name: 'ノート',
+      initialOdo: 10000,
+      maker: '日産',
+      model: 'E13',
+      firstRegistrationYm: '2021-03',
+      tankCapacity: 41,
+      inspectionExpiry: '2027-03-31',
+    })
+
+    await vehicles.update(vehicle.id, {
+      maker: null,
+      model: null,
+      firstRegistrationYm: null,
+      tankCapacity: null,
+      inspectionExpiry: null,
+    })
+
+    const fetched = await vehicles.getById(vehicle.id)
+    expect(fetched?.maker).toBeUndefined()
+    expect(fetched?.model).toBeUndefined()
+    expect(fetched?.firstRegistrationYm).toBeUndefined()
+    expect(fetched?.tankCapacity).toBeUndefined()
+    expect(fetched?.inspectionExpiry).toBeUndefined()
+    expect(fetched?.name).toBe('ノート') // 未指定のフィールドは変わらない
+  })
+
+  it('undefined(キー省略)は「変更なし」— 任意項目の旧値が保持される', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', initialOdo: 10000, maker: '日産' })
+    await vehicles.update(vehicle.id, { name: 'ノート e-POWER', maker: undefined })
+    const fetched = await vehicles.getById(vehicle.id)
+    expect(fetched?.maker).toBe('日産')
+  })
+
+  it('create で null の任意項目は「未設定」としてキー自体を保存しない', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({
+      name: 'ノート',
+      initialOdo: 10000,
+      maker: null,
+      tankCapacity: null,
+    })
+    const fetched = await vehicles.getById(vehicle.id)
+    expect(fetched?.maker).toBeUndefined()
+    expect(fetched?.tankCapacity).toBeUndefined()
+  })
+
   it('存在しない車両の更新はエラー', async () => {
     const { vehicles } = setup()
     await expect(vehicles.update('missing', { name: 'x' })).rejects.toThrow()
@@ -276,6 +326,39 @@ describe('fuelRecordRepository', () => {
     expect(changed.unitPrice).toBe(200) // 6000 ÷ 30
   })
 
+  it('給油所名・メモは「値を設定 → null でクリア → 再取得で消えている」(update系の契約)', async () => {
+    const { fuelRecords } = setup()
+    const record = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-07-01',
+      odo: 10000,
+      fuelAmount: 40,
+      stationName: 'ENEOS 環状店',
+      memo: '高速走行多め',
+    })
+
+    const cleared = await fuelRecords.update(record.id, { stationName: null, memo: null })
+    expect(cleared.stationName).toBeUndefined()
+    expect(cleared.memo).toBeUndefined()
+
+    const fetched = await fuelRecords.getById(record.id)
+    expect(fetched?.stationName).toBeUndefined()
+    expect(fetched?.memo).toBeUndefined()
+  })
+
+  it('給油所名・メモは undefined(キー省略)なら変更されない', async () => {
+    const { fuelRecords } = setup()
+    const record = await fuelRecords.create({
+      vehicleId: 'v1',
+      date: '2026-07-01',
+      odo: 10000,
+      fuelAmount: 40,
+      stationName: 'ENEOS 環状店',
+    })
+    const updated = await fuelRecords.update(record.id, { odo: 10001 })
+    expect(updated.stationName).toBe('ENEOS 環状店')
+  })
+
   it('ある車両の記録の追加・削除が別車両の燃費キャッシュに影響しない', async () => {
     const { fuelRecords } = setup()
     // v1(車): 確定燃費 20 km/L
@@ -441,6 +524,57 @@ describe('maintenanceRepository', () => {
       cost: 0,
     })
     expect(zero.cost).toBe(0)
+  })
+
+  it('店舗・メモ・typeLabel は「値を設定 → null でクリア → 再取得で消えている」(update系の契約)', async () => {
+    const { maintenance } = setup()
+    const record = await maintenance.create({
+      vehicleId: 'v1',
+      type: 'other',
+      typeLabel: 'ドラレコ取付',
+      date: '2026-07-01',
+      odo: 10500,
+      shopName: 'オートバックス',
+      memo: '前後2カメラ',
+    })
+
+    await maintenance.update(record.id, { typeLabel: null, shopName: null, memo: null })
+
+    const fetched = await maintenance.getById(record.id)
+    expect(fetched?.typeLabel).toBeUndefined()
+    expect(fetched?.shopName).toBeUndefined()
+    expect(fetched?.memo).toBeUndefined()
+    expect(fetched?.type).toBe('other') // 未指定のフィールドは変わらない
+  })
+
+  it('種別を「その他」→ 他種別に変更したとき typeLabel: null で旧ラベルが消える', async () => {
+    const { maintenance } = setup()
+    const record = await maintenance.create({
+      vehicleId: 'v1',
+      type: 'other',
+      typeLabel: 'ドラレコ取付',
+      date: '2026-07-01',
+      odo: 10500,
+    })
+
+    await maintenance.update(record.id, { type: 'oil_change', typeLabel: null })
+
+    const fetched = await maintenance.getById(record.id)
+    expect(fetched?.type).toBe('oil_change')
+    expect(fetched?.typeLabel).toBeUndefined() // 旧ラベルが残らない
+  })
+
+  it('店舗・メモは undefined(キー省略)なら変更されない', async () => {
+    const { maintenance } = setup()
+    const record = await maintenance.create({
+      vehicleId: 'v1',
+      type: 'oil_change',
+      date: '2026-07-01',
+      odo: 10500,
+      shopName: 'オートバックス',
+    })
+    const updated = await maintenance.update(record.id, { cost: 5000 })
+    expect(updated.shopName).toBe('オートバックス')
   })
 
   it('type=other は typeLabel を保持する', async () => {

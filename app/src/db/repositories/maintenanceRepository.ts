@@ -3,27 +3,39 @@
  */
 import { db, type AppDatabase } from '../database'
 import type { MaintenanceRecord, MaintenanceType } from '../../types/models'
-import { newId, nowIso, stripUndefined } from './helpers'
+import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** メンテナンス記録の新規作成入力 */
 export interface MaintenanceRecordInput {
   vehicleId: string
   type: MaintenanceType
-  /** type === 'other' のときの自由記述名 */
-  typeLabel?: string
+  /** type === 'other' のときの自由記述名。未設定は省略または null */
+  typeLabel?: string | null
   /** 'YYYY-MM-DD' */
   date: string
   odo: number
   /** 費用(円)。0円可・不明は省略または null */
   cost?: number | null
-  shopName?: string
-  memo?: string
+  shopName?: string | null
+  memo?: string | null
 }
 
-/** 編集可能なフィールド */
+/**
+ * 編集可能なフィールド。
+ * 任意項目(typeLabel / shopName / memo)は null 指定で「クリア(値の削除)」、
+ * undefined(キー省略)で「変更なし」(§update系の共通契約)。
+ * 種別を「その他」→ 他種別へ変える場合は typeLabel: null を渡してラベルを消すこと。
+ */
 export type MaintenanceRecordUpdate = Partial<
-  Omit<MaintenanceRecord, 'id' | 'createdAt' | 'updatedAt'>
->
+  Omit<MaintenanceRecord, 'id' | 'createdAt' | 'updatedAt' | 'typeLabel' | 'shopName' | 'memo'>
+> & {
+  typeLabel?: string | null
+  shopName?: string | null
+  memo?: string | null
+}
+
+/** null 指定で「キー削除」扱いにする任意項目 */
+const CLEARABLE_KEYS = ['typeLabel', 'shopName', 'memo'] as const
 
 /** 一覧の並び: 日付降順 → 同日はODO降順(S-06) */
 const byDateDesc = (a: MaintenanceRecord, b: MaintenanceRecord): number =>
@@ -42,7 +54,7 @@ export function createMaintenanceRepository(database: AppDatabase) {
         date: input.date,
         odo: input.odo,
         cost: input.cost ?? null,
-        ...stripUndefined({
+        ...stripAbsent({
           typeLabel: input.typeLabel,
           shopName: input.shopName,
           memo: input.memo,
@@ -80,7 +92,11 @@ export function createMaintenanceRepository(database: AppDatabase) {
     },
 
     async update(id: string, patch: MaintenanceRecordUpdate): Promise<MaintenanceRecord> {
-      const changes = stripUndefined({ ...patch, updatedAt: nowIso() })
+      // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
+      const changes = toUpdatePatch(
+        { ...patch, updatedAt: nowIso() },
+        CLEARABLE_KEYS,
+      ) as Partial<MaintenanceRecord>
       const updated = await database.maintenanceRecords.update(id, changes)
       if (updated === 0) throw new Error(`メンテナンス記録が見つかりません: ${id}`)
       return (await database.maintenanceRecords.get(id))!

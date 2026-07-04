@@ -131,16 +131,18 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
     try {
       const maker =
         form.makerSelect === OTHER_MAKER ? form.makerFree.trim() : form.makerSelect
+      // 空欄 = null: create では「未設定」、update では「クリア」として扱われる
+      // (undefined だと update で「変更なし」になり旧値が残る)
       const payload = {
         vehicleType: form.vehicleType,
         name: form.name.trim(),
-        maker: maker || undefined,
-        model: form.model.trim() || undefined,
-        firstRegistrationYm: form.firstRegistrationYm || undefined,
+        maker: maker || null,
+        model: form.model.trim() || null,
+        firstRegistrationYm: form.firstRegistrationYm || null,
         initialOdo: odoValue,
         fuelType: form.fuelType,
-        tankCapacity: form.tankCapacity !== '' ? Number(form.tankCapacity) : undefined,
-        inspectionExpiry: form.inspectionExpiry || undefined,
+        tankCapacity: form.tankCapacity !== '' ? Number(form.tankCapacity) : null,
+        inspectionExpiry: form.inspectionExpiry || null,
       }
       const wasOnboarding = isOnboarding
       let saved: Vehicle

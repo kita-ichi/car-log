@@ -13,7 +13,7 @@ import {
   diffFuelEconomies,
   sortRecordsChronologically,
 } from '../../logic/fuelEconomy'
-import { newId, nowIso, stripUndefined } from './helpers'
+import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** 給油記録の新規作成入力 */
 export interface FuelRecordInput {
@@ -28,12 +28,25 @@ export interface FuelRecordInput {
   unitPrice?: number | null
   /** 省略時 true(満タン) */
   isFullTank?: boolean
-  stationName?: string
-  memo?: string
+  /** 未設定は省略または null */
+  stationName?: string | null
+  memo?: string | null
 }
 
-/** 編集可能なフィールド */
-export type FuelRecordUpdate = Partial<Omit<FuelRecord, 'id' | 'createdAt' | 'updatedAt' | 'fuelEconomy'>>
+/**
+ * 編集可能なフィールド。
+ * 任意項目(stationName / memo)は null 指定で「クリア(値の削除)」、
+ * undefined(キー省略)で「変更なし」(§update系の共通契約)。
+ */
+export type FuelRecordUpdate = Partial<
+  Omit<FuelRecord, 'id' | 'createdAt' | 'updatedAt' | 'fuelEconomy' | 'stationName' | 'memo'>
+> & {
+  stationName?: string | null
+  memo?: string | null
+}
+
+/** null 指定で「キー削除」扱いにする任意項目 */
+const CLEARABLE_KEYS = ['stationName', 'memo'] as const
 
 /**
  * 金額(総額・単価)の正規化(§5.2):
@@ -82,7 +95,7 @@ export function createFuelRecordRepository(database: AppDatabase) {
         unitPrice: prices.unitPrice,
         isFullTank: input.isFullTank ?? true,
         fuelEconomy: null,
-        ...stripUndefined({ stationName: input.stationName, memo: input.memo }),
+        ...stripAbsent({ stationName: input.stationName, memo: input.memo }),
       }
       return database.transaction('rw', database.fuelRecords, async () => {
         await database.fuelRecords.add(record)
@@ -120,7 +133,8 @@ export function createFuelRecordRepository(database: AppDatabase) {
         const current = await database.fuelRecords.get(id)
         if (!current) throw new Error(`給油記録が見つかりません: ${id}`)
 
-        const changes: Partial<FuelRecord> = stripUndefined({ ...patch, updatedAt: nowIso() })
+        // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
+        const changes = toUpdatePatch({ ...patch, updatedAt: nowIso() }, CLEARABLE_KEYS) as Partial<FuelRecord>
 
         // 金額の正規化: パッチで明示された側を入力源として再計算する
         const priceTouched =
