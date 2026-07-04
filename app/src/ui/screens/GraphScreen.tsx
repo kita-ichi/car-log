@@ -17,7 +17,11 @@ import {
 } from 'recharts'
 import type { FuelRecord } from '../../types/models'
 import { fuelRecordRepository } from '../../db/repositories'
-import { calculateFuelEconomies } from '../../logic/fuelEconomy'
+import {
+  calculateFuelEconomies,
+  calculateStatsFromIntervals,
+  type FuelEconomyInterval,
+} from '../../logic/fuelEconomy'
 import { useApp } from '../AppContext'
 import { ListAppBar } from '../components'
 import { fmtEconomy, fmtMonthDay } from '../format'
@@ -38,12 +42,18 @@ interface Point {
   economy: number
   distance: number
   fuelUsed: number
+  /** 対応する確定区間(期間内統計の計算に使う) */
+  interval: FuelEconomyInterval
 }
 
-/** n ヶ月前の 'YYYY-MM-DD' */
+/** n ヶ月前の 'YYYY-MM-DD'(対象月に無い日は月末に丸める。例: 12/31 の6ヶ月前 → 6/30) */
 const monthsAgo = (n: number): string => {
-  const d = new Date()
-  d.setMonth(d.getMonth() - n)
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth() - n
+  // new Date(y, m+1, 0) = 対象月の末日(setMonth の月末オーバーフローを避ける)
+  const lastDay = new Date(y, m + 1, 0).getDate()
+  const d = new Date(y, m, Math.min(now.getDate(), lastDay))
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${mm}-${dd}`
@@ -85,6 +95,7 @@ export function GraphScreen() {
           economy: iv.economy,
           distance: iv.distance,
           fuelUsed: iv.fuelUsed,
+          interval: iv,
         },
       ]
     })
@@ -103,23 +114,14 @@ export function GraphScreen() {
     }
   }, [allPoints, period])
 
-  // 期間内サマリ(平均 = 総走行距離 ÷ 総給油量。単純平均ではない — 要件 §6.1)
+  // 期間内サマリ — logic/ の calculateStatsFromIntervals() で計算(UI側で再実装しない)
   const summary = useMemo(() => {
     if (points.length === 0) return null
-    let dist = 0
-    let fuel = 0
-    let best = points[0]
-    let worst = points[0]
-    for (const p of points) {
-      dist += p.distance
-      fuel += p.fuelUsed
-      if (p.economy > best.economy) best = p
-      if (p.economy < worst.economy) worst = p
-    }
+    const stats = calculateStatsFromIntervals(points.map((p) => p.interval))
     return {
-      average: fuel > 0 ? Math.round((dist / fuel) * 100) / 100 : null,
-      best: best.economy,
-      worst: worst.economy,
+      average: stats.averageEconomy,
+      best: stats.best?.economy ?? null,
+      worst: stats.worst?.economy ?? null,
     }
   }, [points])
 
