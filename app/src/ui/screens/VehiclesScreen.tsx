@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FuelType, Vehicle, VehicleType } from '../../types/models'
 import { vehicleRepository } from '../../db/repositories'
+import { validateVehicle } from '../../logic/validation'
 import { useApp } from '../AppContext'
 import { ConfirmDialog, ModalAppBar } from '../components'
 import { BikeIcon, CarIcon, PlusIcon, VehicleIcon } from '../icons'
@@ -135,7 +136,13 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   }
 
   const odoValue = Number(form.initialOdo)
-  const canSave = form.name.trim() !== '' && form.initialOdo !== '' && odoValue >= 0 && !saving
+  // ライブバリデーション(§0.2): エラーがあれば保存無効化(負・0のタンク容量なども弾く)
+  const result = validateVehicle({
+    name: form.name,
+    initialOdo: form.initialOdo.trim() === '' ? null : odoValue,
+    tankCapacity: form.tankCapacity.trim() === '' ? null : Number(form.tankCapacity),
+  })
+  const canSave = result.canSave && !saving
 
   const handleSave = async () => {
     if (!canSave || editing === null) return
@@ -281,45 +288,42 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
         ) : (
           <>
             <div className="list">
+              {/* B-6: 行(切り替え)と編集は別のインタラクティブ要素に分離(ボタン内ネスト禁止・キーボード到達可能) */}
               {vehicles.map((v) => (
-                <button key={v.id} className="row" onClick={() => void handleRowTap(v)}>
-                  <span style={{ color: 'var(--c-sub)', display: 'flex' }}>
-                    <VehicleIcon type={v.vehicleType} size={24} />
-                  </span>
-                  <div className="grow">
-                    <div style={{ fontWeight: 700 }}>
-                      {v.name}{' '}
-                      {v.id === selectedVehicle?.id && <span className="badge sel">選択中</span>}
+                <div key={v.id} className="row split">
+                  <button
+                    className="row-main"
+                    onClick={() => void handleRowTap(v)}
+                    aria-label={`${v.name} に切り替え`}
+                  >
+                    <span style={{ color: 'var(--c-sub)', display: 'flex' }}>
+                      <VehicleIcon type={v.vehicleType} size={24} />
+                    </span>
+                    <div className="grow">
+                      <div style={{ fontWeight: 700 }}>
+                        {v.name}{' '}
+                        {v.id === selectedVehicle?.id && <span className="badge sel">選択中</span>}
+                      </div>
+                      <div className="sub num">
+                        {[
+                          vehicleTypeLabel(v.vehicleType),
+                          [v.maker, v.model].filter(Boolean).join(' '),
+                          `ODO ${fmtKm(v.initialOdo)} km〜`,
+                          fuelTypeLabel(v.fuelType),
+                        ]
+                          .filter(Boolean)
+                          .join(' ・ ')}
+                      </div>
                     </div>
-                    <div className="sub num">
-                      {[
-                        vehicleTypeLabel(v.vehicleType),
-                        [v.maker, v.model].filter(Boolean).join(' '),
-                        `ODO ${fmtKm(v.initialOdo)} km〜`,
-                        fuelTypeLabel(v.fuelType),
-                      ]
-                        .filter(Boolean)
-                        .join(' ・ ')}
-                    </div>
-                  </div>
-                  <span
-                    className="link"
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openForm(v)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.stopPropagation()
-                        openForm(v)
-                      }
-                    }}
+                  </button>
+                  <button
+                    className="link row-edit"
+                    onClick={() => openForm(v)}
+                    aria-label={`${v.name} を編集`}
                   >
                     編集
-                  </span>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
             <p className="sub" style={{ margin: '0 4px' }}>
@@ -485,7 +489,13 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                 />
                 <span className="unit">L</span>
               </div>
-              <div className="hint">給油量の入力チェックに使われます</div>
+              {result.errors.some((e) => e.field === 'tankCapacity') ? (
+                <div className="hint" style={{ color: 'var(--c-danger)' }}>
+                  {result.errors.find((e) => e.field === 'tankCapacity')?.message}
+                </div>
+              ) : (
+                <div className="hint">給油量の入力チェックに使われます</div>
+              )}
             </div>
 
             <div className="field">
@@ -503,6 +513,11 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
             <button className="btn primary" disabled={!canSave} onClick={() => void handleSave()}>
               保存する
             </button>
+            {!result.canSave && (
+              <p className="sub" style={{ margin: '0 4px', textAlign: 'center' }}>
+                {result.errors[0]?.message}
+              </p>
+            )}
             {editing !== 'new' && (
               <button className="btn danger-text" onClick={() => setConfirmArchive(true)}>
                 この車両をアーカイブ(手放した)
