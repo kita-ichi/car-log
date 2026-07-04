@@ -6,6 +6,7 @@ import {
   computeTotalPrice,
   computeUnitPrice,
   diffFuelEconomies,
+  findPreviousRecord,
   previewFuelEconomy,
   sortRecordsChronologically,
   type FuelRecordForCalc,
@@ -280,6 +281,84 @@ describe('previewFuelEconomy(保存前プレビュー)', () => {
   it('ODO・給油量が0以下ならプレビューしない', () => {
     expect(previewFuelEconomy(existing, { odo: 0, fuelAmount: 20, isFullTank: true })).toBeNull()
     expect(previewFuelEconomy(existing, { odo: 10600, fuelAmount: 0, isFullTank: true })).toBeNull()
+  })
+
+  describe('date 指定(過去日付の後追い入力)', () => {
+    // a(基準・満タン)→ [後追い入力位置] → b(満タン・確定済み)
+    const withLater = [
+      rec('a', '2026-06-01', 10000, 40),
+      rec('b', '2026-06-20', 10500, 25), // 確定済み: 500/25 = 20
+    ]
+
+    it('date を渡すと実際の時系列位置に挿入して計算する(直前の満タンが基準)', () => {
+      const preview = previewFuelEconomy(withLater, {
+        date: '2026-06-10',
+        odo: 10300,
+        fuelAmount: 15,
+        isFullTank: true,
+      })
+      // 基準は a(10000)。最新の b(10500)ではない
+      expect(preview).toEqual({ economy: 20, distance: 300 }) // 300 ÷ 15
+    })
+
+    it('date 未指定なら従来どおり時系列の最後として扱う(後方互換)', () => {
+      // 最新 b(10500)が基準になり、10300 は逆行 → プレビューなし
+      expect(
+        previewFuelEconomy(withLater, { odo: 10300, fuelAmount: 15, isFullTank: true }),
+      ).toBeNull()
+    })
+
+    it('全記録より未来の date は時系列の最後と同じ結果になる', () => {
+      const preview = previewFuelEconomy(withLater, {
+        date: '2026-07-01',
+        odo: 10800,
+        fuelAmount: 15,
+        isFullTank: true,
+      })
+      expect(preview).toEqual({ economy: 20, distance: 300 }) // (10800-10500) ÷ 15
+    })
+
+    it('挿入位置で逆行になる場合はプレビューしない', () => {
+      expect(
+        previewFuelEconomy(withLater, {
+          date: '2026-06-10',
+          odo: 9500, // 直前の a(10000)より小さい
+          fuelAmount: 15,
+          isFullTank: true,
+        }),
+      ).toBeNull()
+    })
+  })
+})
+
+describe('findPreviousRecord(入力日付の直前の記録 — ODO逆行警告の基準)', () => {
+  const records = [
+    rec('a', '2026-06-01', 10000, 40),
+    rec('b', '2026-06-10', 10300, 10, false),
+    rec('c', '2026-06-20', 10600, 20),
+  ]
+
+  it('入力日付より前の最後の記録を返す(後追い入力では最新記録ではない)', () => {
+    expect(findPreviousRecord(records, '2026-06-15')?.id).toBe('b')
+    expect(findPreviousRecord(records, '2026-06-05')?.id).toBe('a')
+  })
+
+  it('全記録より後の日付なら最新の記録を返す', () => {
+    expect(findPreviousRecord(records, '2026-07-01')?.id).toBe('c')
+  })
+
+  it('同日の記録は直前候補に含める', () => {
+    expect(findPreviousRecord(records, '2026-06-10')?.id).toBe('b')
+  })
+
+  it('全記録より前の日付・記録なしは undefined(initialOdo 基準は呼び出し側)', () => {
+    expect(findPreviousRecord(records, '2026-05-01')).toBeUndefined()
+    expect(findPreviousRecord([], '2026-06-15')).toBeUndefined()
+  })
+
+  it('入力順に依存しない(時系列ソートして判定する)', () => {
+    const shuffled = [records[2], records[0], records[1]]
+    expect(findPreviousRecord(shuffled, '2026-06-15')?.id).toBe('b')
   })
 })
 

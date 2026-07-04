@@ -164,27 +164,45 @@ export function diffFuelEconomies(
  * 入力途中の給油の燃費プレビュー(S-02 の保存前表示用)。
  * 満タンON + ODO・給油量入力済みのときのみ値を返す。金額の有無は関係ない。
  *
- * @param existingRecords 対象車両の既存の全給油記録(保存済みのもの)
+ * date を渡すと実際の時系列位置に仮挿入して計算するため、
+ * 過去日付の後追い入力でも正しい区間(直前の満タン → 入力)で計算される。
+ * date 省略時は時系列の最後(最新の給油)として扱う。
+ *
+ * @param existingRecords 対象車両の既存の全給油記録(保存済みのもの。編集時は自分を除く)
  * @param input           入力中の値
  */
 export function previewFuelEconomy(
   existingRecords: readonly FuelRecordForCalc[],
-  input: { odo: number; fuelAmount: number; isFullTank: boolean },
+  input: { odo: number; fuelAmount: number; isFullTank: boolean; date?: string | null },
 ): { economy: number; distance: number } | null {
   if (!input.isFullTank || !(input.odo > 0) || !(input.fuelAmount > 0)) return null
 
-  // 既存記録の末尾に仮追加して計算する(編集ではなく新規追加を想定)
+  // 既存記録に仮追加して計算する(編集ではなく新規追加を想定)
   const draft: FuelRecordForCalc = {
     id: '__draft__',
-    date: '9999-12-31', // 必ず最後に来るように
+    date: input.date || '9999-12-31', // 日付未指定なら必ず最後に来るように
     odo: input.odo,
     fuelAmount: input.fuelAmount,
     isFullTank: true,
   }
   const { intervals } = calculateFuelEconomies([...existingRecords, draft])
-  const last = intervals[intervals.length - 1]
-  if (!last || last.endRecordId !== '__draft__') return null
-  return { economy: last.economy, distance: last.distance }
+  const interval = intervals.find((iv) => iv.endRecordId === '__draft__')
+  if (!interval) return null
+  return { economy: interval.economy, distance: interval.distance }
+}
+
+/**
+ * 指定日付の時点で「直前」となる記録を返す(ODO逆行警告の基準に使う)。
+ * 過去日付の後追い入力では最新記録ではなく、入力日付より前の最後の記録と比較すべきため。
+ * 同日の記録は「その日にすでに記録済みのもの」として直前候補に含める。
+ * 該当が無ければ undefined(車両の initialOdo を基準にするのは呼び出し側の責務)。
+ */
+export function findPreviousRecord<T extends FuelRecordForCalc>(
+  records: readonly T[],
+  date: string,
+): T | undefined {
+  const before = sortRecordsChronologically(records).filter((r) => r.date <= date)
+  return before[before.length - 1]
 }
 
 /** 統計サマリ(S-01 平均燃費 / S-07 平均・ベスト・ワースト)を計算する */

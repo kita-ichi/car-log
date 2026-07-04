@@ -90,6 +90,28 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
     expect(codes(ok)).not.toContain('economy_out_of_range')
   })
 
+  it('過去日付の後追い入力でも実際の時系列位置で燃費範囲を判定する', () => {
+    // a(満タン基準)→ [後追い入力] → b(満タン・確定済み)
+    const existingRecords: FuelRecordForCalc[] = [
+      { id: 'a', date: '2026-06-01', odo: 10000, fuelAmount: 40, isFullTank: true },
+      { id: 'b', date: '2026-06-20', odo: 10500, fuelAmount: 25, isFullTank: true },
+    ]
+    // 06-10 の後追い入力: 区間は a→入力(300km ÷ 4L = 75 km/L)→ 範囲外警告が出るべき
+    // (旧実装は入力を時系列最後として扱い、b 基準の逆行扱いで警告を出せなかった)
+    const result = validateFuelRecord(
+      { date: '2026-06-10', odo: 10300, fuelAmount: 4, isFullTank: true },
+      { existingRecords },
+    )
+    expect(codes(result)).toContain('economy_out_of_range')
+
+    // 正常燃費(300km ÷ 15L = 20 km/L)なら警告なし
+    const ok = validateFuelRecord(
+      { date: '2026-06-10', odo: 10300, fuelAmount: 15, isFullTank: true },
+      { existingRecords },
+    )
+    expect(codes(ok)).not.toContain('economy_out_of_range')
+  })
+
   it('初回給油(既存記録なし)では燃費範囲警告は出ない(計算不能のため)', () => {
     const result = validateFuelRecord(validInput, { existingRecords: [] })
     expect(codes(result)).not.toContain('economy_out_of_range')

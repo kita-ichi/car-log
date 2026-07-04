@@ -160,10 +160,12 @@ export function validateFuelRecord(
   }
 
   if (!isEmpty(input.odo) && !isEmpty(input.fuelAmount) && input.fuelAmount > 0) {
+    // date も渡す: 過去日付の後追い入力でも実際の時系列位置で燃費を計算する
     const preview = previewFuelEconomy(context.existingRecords ?? [], {
       odo: input.odo,
       fuelAmount: input.fuelAmount,
       isFullTank: input.isFullTank,
+      date: input.date,
     })
     if (preview && (preview.economy < ECONOMY_RANGE.min || preview.economy > ECONOMY_RANGE.max)) {
       issues.push({
