@@ -9,8 +9,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FuelRecord } from '../../types/models'
 import { fuelRecordRepository } from '../../db/repositories'
-import { calculateFuelEconomies, computeUnitPrice, previewFuelEconomy } from '../../logic/fuelEconomy'
-import { validateFuelRecord } from '../../logic/validation'
+import {
+  calculateFuelEconomies,
+  computeUnitPrice,
+  findPreviousRecord,
+  previewFuelEconomy,
+} from '../../logic/fuelEconomy'
+import { validateFuelRecord, type ValidationResult } from '../../logic/validation'
 import { useApp } from '../AppContext'
 import {
   ConfirmDialog,
@@ -41,7 +46,7 @@ function FuelRecordFormFields({
   existing,
   previousOdo,
   previousUnitPrice,
-  tankCapacity,
+  result,
   showPreview,
 }: {
   form: FormState
@@ -50,7 +55,8 @@ function FuelRecordFormFields({
   existing: FuelRecord[]
   previousOdo: number | null
   previousUnitPrice: number | null
-  tankCapacity: number | null
+  /** ライブバリデーション結果(親で1回だけ計算して渡す) */
+  result: ValidationResult
   /** 保存前の燃費プレビューを表示するか(S-02 のみ) */
   showPreview: boolean
 }) {
@@ -61,25 +67,21 @@ function FuelRecordFormFields({
   const fuelAmount = toNum(form.fuelAmount)
   const totalPrice = toNum(form.totalPrice)
 
-  // ライブバリデーション(入力のたびに再評価 — §0.2)
-  const result = useMemo(
-    () =>
-      validateFuelRecord(
-        { date: form.date, odo, fuelAmount, totalPrice, isFullTank: form.isFullTank },
-        { previousOdo, tankCapacity, existingRecords: existing },
-      ),
-    [form.date, odo, fuelAmount, totalPrice, form.isFullTank, previousOdo, tankCapacity, existing],
-  )
-
   // 単価のライブ表示(金額入力時のみ — §0.3)
   const unitPrice =
     totalPrice !== null && fuelAmount !== null ? computeUnitPrice(totalPrice, fuelAmount) : null
 
   // 燃費プレビュー(満タンON+ODO・給油量入力済み。金額不要 — S-02 §7)
+  // date も渡す: 過去日付の後追い入力でも実際の時系列位置(直前の満タン→入力)で計算する
   const preview = useMemo(() => {
     if (!showPreview || odo === null || fuelAmount === null) return null
-    return previewFuelEconomy(existing, { odo, fuelAmount, isFullTank: form.isFullTank })
-  }, [showPreview, existing, odo, fuelAmount, form.isFullTank])
+    return previewFuelEconomy(existing, {
+      odo,
+      fuelAmount,
+      isFullTank: form.isFullTank,
+      date: form.date,
+    })
+  }, [showPreview, existing, odo, fuelAmount, form.isFullTank, form.date])
 
   return (
     <>
@@ -257,9 +259,10 @@ export function FuelNewScreen() {
 
   if (!selectedVehicle) return null
 
-  const latest = existing[existing.length - 1]
-  const previousOdo = latest?.odo ?? selectedVehicle.initialOdo
-  const previousUnitPrice = latest?.unitPrice ?? null
+  // 前回値(逆行警告・ヒント)の基準: 入力日付の「直前」の記録。
+  // 過去日付の後追い入力では最新記録ではなく時系列上の直前と比較する
+  const previousOdo = findPreviousRecord(existing, form.date)?.odo ?? selectedVehicle.initialOdo
+  const previousUnitPrice = existing[existing.length - 1]?.unitPrice ?? null
 
   const odo = toNum(form.odo)
   const fuelAmount = toNum(form.fuelAmount)
@@ -315,7 +318,7 @@ export function FuelNewScreen() {
             existing={existing}
             previousOdo={previousOdo}
             previousUnitPrice={previousUnitPrice}
-            tankCapacity={selectedVehicle.tankCapacity ?? null}
+            result={result}
             showPreview
           />
         )}
@@ -392,11 +395,9 @@ export function FuelDetailScreen({ id }: { id: string }) {
     )
   }
 
-  // 編集時の前回ODO: 時系列でこの記録より前の最後の記録
-  const before = others.filter(
-    (r) => r.date < record.date || (r.date === record.date && r.odo <= record.odo),
-  )
-  const previousOdo = before[before.length - 1]?.odo ?? selectedVehicle?.initialOdo ?? null
+  // 編集時の前回ODO: 編集中の日付の「直前」の記録(自分を除く)。
+  // 日付を変更した場合もその位置での直前記録と比較する
+  const previousOdo = findPreviousRecord(others, form.date)?.odo ?? selectedVehicle?.initialOdo ?? null
 
   const odo = toNum(form.odo)
   const fuelAmount = toNum(form.fuelAmount)
@@ -406,7 +407,7 @@ export function FuelDetailScreen({ id }: { id: string }) {
     {
       previousOdo,
       tankCapacity: selectedVehicle?.tankCapacity ?? null,
-      existingRecords: before,
+      existingRecords: others,
     },
   )
   const missing = missingCount(form)
@@ -484,10 +485,10 @@ export function FuelDetailScreen({ id }: { id: string }) {
           setForm={(update) =>
             setForm((f) => (f === null ? f : typeof update === 'function' ? update(f) : update))
           }
-          existing={before}
+          existing={others}
           previousOdo={previousOdo}
           previousUnitPrice={null}
-          tankCapacity={selectedVehicle?.tankCapacity ?? null}
+          result={result}
           showPreview={false}
         />
 
