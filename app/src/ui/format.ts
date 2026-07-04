@@ -2,7 +2,11 @@
  * 表示用フォーマッタ(UI層のみで使用)
  * 単位・小数桁の統一: 燃費=小数1桁 km/L / 給油量=小数2桁 L / 金額=整数 円 / 距離=整数 km
  */
-import type { FuelType, MaintenanceType, VehicleType } from '../types/models'
+import type { FuelType, VehicleType } from '../types/models'
+
+// メンテ種別ラベルは CSV エクスポート(logic 層)と共用のため logic/labels.ts に移動した。
+// UI からの import 経路は従来どおりここから使える(再エクスポート)
+export { MAINTENANCE_TYPE_LABELS, maintenanceLabel } from '../logic/labels'
 
 /** 3桁区切り(整数) */
 export const fmtInt = (n: number): string => Math.round(n).toLocaleString('ja-JP')
@@ -66,19 +70,3 @@ export const vehicleTypeLabel = (t: VehicleType): string => (t === 'motorcycle' 
 export const fuelTypeLabel = (t: FuelType): string =>
   t === 'premium' ? 'ハイオク' : t === 'diesel' ? '軽油' : 'レギュラー'
 
-/** メンテナンス種別の表示名(§5.3) */
-export const MAINTENANCE_TYPE_LABELS: Record<MaintenanceType, string> = {
-  oil_change: 'オイル交換',
-  oil_filter: 'オイルフィルタ',
-  tire_change: 'タイヤ交換',
-  tire_rotation: 'タイヤローテーション',
-  shaken: '車検',
-  legal_inspection: '法定点検',
-  battery: 'バッテリー交換',
-  wiper: 'ワイパー交換',
-  other: 'その他',
-}
-
-/** メンテ記録の表示名(その他は typeLabel を優先) */
-export const maintenanceLabel = (type: MaintenanceType, typeLabel?: string): string =>
-  type === 'other' && typeLabel ? typeLabel : MAINTENANCE_TYPE_LABELS[type]
