@@ -1,9 +1,9 @@
-# master へのプッシュのたびにテスト→ビルド→GitHub Pages へ公開する
+# main へのプッシュのたびにテスト→ビルド→GitHub Pages へ公開する
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
