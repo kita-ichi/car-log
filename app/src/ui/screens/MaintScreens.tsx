@@ -121,6 +121,7 @@ function MaintFormFields({
           value={form.date}
           onChange={(e) => set('date', e.target.value)}
         />
+        <WarnChips warnings={result.warnings} field="date" />
       </div>
 
       <div className="field">
