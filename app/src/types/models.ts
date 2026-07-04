@@ -46,7 +46,7 @@ export interface Vehicle extends BaseEntity {
   model?: string
   /** 初度登録年月 'YYYY-MM' */
   firstRegistrationYm?: string
-  /** 登録時点のODO(km)。燃費計算の起点 */
+  /** 登録時点のODO(km)。燃費計算には不使用。ODO入力チェック(逆行警告)の基準 */
   initialOdo: number
   /** 燃料種別。初期値: regular */
   fuelType: FuelType

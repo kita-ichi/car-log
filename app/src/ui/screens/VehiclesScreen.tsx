@@ -365,7 +365,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                 />
                 <span className="unit">km</span>
               </div>
-              <div className="hint">燃費計算の起点になります</div>
+              <div className="hint">ODOの入力チェック(逆行警告)の基準になります</div>
             </div>
 
             <div className="field">
