@@ -117,4 +117,6 @@ export interface ReminderRule extends BaseEntity {
 export interface AppSettings {
   /** 選択中の車両ID(未選択・未登録時は null) */
   selectedVehicleId: string | null
+  /** 最後にJSONバックアップを書き出した日時(ISO 8601)。未実施は null(S-09 に表示) */
+  lastBackupAt: string | null
 }

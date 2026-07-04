@@ -135,6 +135,12 @@ export function createFuelRecordRepository(database: AppDatabase) {
       return order === 'desc' ? sorted.reverse() : sorted
     },
 
+    /** 全車両の給油記録(エクスポート用・F-11)。時系列昇順 */
+    async listAll(): Promise<FuelRecord[]> {
+      const records = await database.fuelRecords.toArray()
+      return sortRecordsChronologically(records)
+    },
+
     /** 車両の最新の給油記録(前回値ヒント・現在ODO推定に使用)。無ければ undefined */
     async latestByVehicle(vehicleId: string): Promise<FuelRecord | undefined> {
       const records = await this.listByVehicle(vehicleId, 'desc')

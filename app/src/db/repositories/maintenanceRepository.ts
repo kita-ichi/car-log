@@ -89,6 +89,12 @@ export function createMaintenanceRepository(database: AppDatabase) {
       return records.sort(byDateDesc)
     },
 
+    /** 全車両のメンテ記録(エクスポート用・F-11)。時系列昇順 */
+    async listAll(): Promise<MaintenanceRecord[]> {
+      const records = await database.maintenanceRecords.toArray()
+      return records.sort((a, b) => -byDateDesc(a, b))
+    },
+
     /**
      * 同種別の最新実施記録(「前回オイル交換いつ?」/ リマインダー判定の基点)。
      * 無ければ undefined

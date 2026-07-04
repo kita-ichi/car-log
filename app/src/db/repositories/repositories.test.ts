@@ -654,7 +654,7 @@ describe('settingsRepository', () => {
 
     await settings.setSelectedVehicleId('v1')
     expect(await settings.getSelectedVehicleId()).toBe('v1')
-    expect(await settings.getAppSettings()).toEqual({ selectedVehicleId: 'v1' })
+    expect(await settings.getAppSettings()).toEqual({ selectedVehicleId: 'v1', lastBackupAt: null })
 
     await settings.setSelectedVehicleId(null)
     expect(await settings.getSelectedVehicleId()).toBeNull()
