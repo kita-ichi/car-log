@@ -16,6 +16,42 @@ export function stripAbsent<T extends object>(obj: T): { [K in keyof T]?: NonNul
   return result as { [K in keyof T]?: NonNullable<T[K]> }
 }
 
+/** assertNumber の検証ルール */
+export interface NumberRule {
+  /** これ未満は拒否(例: 0 → 0以上のみ許容) */
+  min?: number
+  /** この値以下は拒否(例: 0 → 正の数のみ許容) */
+  greaterThan?: number
+  /** null を正規の値として許容するか(金額クリア等)。既定 false */
+  nullable?: boolean
+}
+
+/**
+ * リポジトリ入口の数値不変条件チェック。違反時は Error を throw する。
+ * undefined は「未指定(update の変更なし・任意項目の省略)」としてチェックしない。
+ * NaN・Infinity・非数値は常に拒否する。
+ */
+export function assertNumber(
+  field: string,
+  value: number | null | undefined,
+  rule: NumberRule = {},
+): void {
+  if (value === undefined) return
+  if (value === null) {
+    if (rule.nullable) return
+    throw new Error(`${field} に null は指定できません`)
+  }
+  if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
+    throw new Error(`${field} が数値ではありません: ${String(value)}`)
+  }
+  if (rule.min !== undefined && value < rule.min) {
+    throw new Error(`${field} は ${rule.min} 以上で指定してください: ${value}`)
+  }
+  if (rule.greaterThan !== undefined && value <= rule.greaterThan) {
+    throw new Error(`${field} は ${rule.greaterThan} より大きい値で指定してください: ${value}`)
+  }
+}
+
 /**
  * update 用パッチを Dexie の update() に渡す形へ整形する。
  *

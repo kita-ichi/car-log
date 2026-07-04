@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateFuelRecord, validateMaintenanceRecord } from './validation'
+import { validateFuelRecord, validateMaintenanceRecord, validateVehicle } from './validation'
 import type { FuelRecordForCalc } from './fuelEconomy'
 
 const codes = (result: { issues: { code: string }[] }) => result.issues.map((i) => i.code)
@@ -158,6 +158,36 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
     expect(result.errors.length).toBeGreaterThan(0)
     expect(codes(result)).toContain('tank_capacity_exceeded')
     expect(result.canSave).toBe(false)
+  })
+})
+
+describe('validateVehicle(車両フォーム・S-08)', () => {
+  const validInput = { name: 'ノート', initialOdo: 10000 }
+
+  it('車両名・登録時ODOが揃っていれば保存可(他は任意)', () => {
+    expect(validateVehicle(validInput).canSave).toBe(true)
+  })
+
+  it('車両名未入力・空白のみはエラー', () => {
+    expect(codes(validateVehicle({ ...validInput, name: null }))).toContain('name_required')
+    expect(codes(validateVehicle({ ...validInput, name: '' }))).toContain('name_required')
+    expect(codes(validateVehicle({ ...validInput, name: '   ' }))).toContain('name_required')
+    expect(validateVehicle({ ...validInput, name: '' }).canSave).toBe(false)
+  })
+
+  it('登録時ODO未入力はエラー、マイナスはエラー、0は許容', () => {
+    expect(codes(validateVehicle({ ...validInput, initialOdo: null }))).toContain('odo_required')
+    expect(validateVehicle({ ...validInput, initialOdo: -1 }).canSave).toBe(false)
+    expect(validateVehicle({ ...validInput, initialOdo: 0 }).canSave).toBe(true)
+  })
+
+  it('タンク容量は未入力OK・0以下はエラー', () => {
+    expect(validateVehicle({ ...validInput, tankCapacity: null }).canSave).toBe(true)
+    expect(validateVehicle({ ...validInput, tankCapacity: 41 }).canSave).toBe(true)
+    const zero = validateVehicle({ ...validInput, tankCapacity: 0 })
+    expect(codes(zero)).toContain('invalid_number')
+    expect(zero.canSave).toBe(false)
+    expect(validateVehicle({ ...validInput, tankCapacity: -5 }).canSave).toBe(false)
   })
 })
 

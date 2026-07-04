@@ -13,7 +13,7 @@ import {
   diffFuelEconomies,
   sortRecordsChronologically,
 } from '../../logic/fuelEconomy'
-import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
+import { assertNumber, newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** 給油記録の新規作成入力 */
 export interface FuelRecordInput {
@@ -49,6 +49,22 @@ export type FuelRecordUpdate = Partial<
 const CLEARABLE_KEYS = ['stationName', 'memo'] as const
 
 /**
+ * create / update 入口の不変条件チェック(§6.1 不正データはこの層で弾く)。
+ * undefined のフィールドは「未指定」としてチェックしない(update の変更なし)。
+ */
+function assertFuelRecordValues(values: {
+  odo?: number | null
+  fuelAmount?: number | null
+  totalPrice?: number | null
+  unitPrice?: number | null
+}): void {
+  assertNumber('odo', values.odo, { min: 0 })
+  assertNumber('fuelAmount', values.fuelAmount, { greaterThan: 0 })
+  assertNumber('totalPrice', values.totalPrice, { min: 0, nullable: true })
+  assertNumber('unitPrice', values.unitPrice, { min: 0, nullable: true })
+}
+
+/**
  * 金額(総額・単価)の正規化(§5.2):
  * - 総額あり → 単価を自動算出(両方保持)
  * - 単価のみ → 総額を逆算(両方保持)
@@ -81,6 +97,7 @@ export function createFuelRecordRepository(database: AppDatabase) {
   return {
     /** 給油記録を追加し、影響区間の燃費を再計算。保存後のエンティティ(算出燃費入り)を返す */
     async create(input: FuelRecordInput): Promise<FuelRecord> {
+      assertFuelRecordValues(input)
       const now = nowIso()
       const prices = normalizePrices(input.fuelAmount, input.totalPrice, input.unitPrice)
       const record: FuelRecord = {
@@ -129,6 +146,7 @@ export function createFuelRecordRepository(database: AppDatabase) {
      * 金額関連(totalPrice / unitPrice / fuelAmount)が変わった場合は単価・総額を正規化し直す。
      */
     async update(id: string, patch: FuelRecordUpdate): Promise<FuelRecord> {
+      assertFuelRecordValues(patch)
       return database.transaction('rw', database.fuelRecords, async () => {
         const current = await database.fuelRecords.get(id)
         if (!current) throw new Error(`給油記録が見つかりません: ${id}`)

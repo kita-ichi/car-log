@@ -4,7 +4,7 @@
  */
 import { db, type AppDatabase } from '../database'
 import type { FuelType, Vehicle, VehicleType } from '../../types/models'
-import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
+import { assertNumber, newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** 車両の新規登録入力(id・タイムスタンプ・アーカイブ状態は自動付与) */
 export interface VehicleInput {
@@ -57,10 +57,27 @@ const CLEARABLE_KEYS = [
   'inspectionExpiry',
 ] as const
 
+/**
+ * create / update 入口の不変条件チェック(§6.1 不正データはこの層で弾く)。
+ * undefined のフィールドは「未指定」としてチェックしない(update の変更なし)。
+ */
+function assertVehicleValues(values: {
+  name?: string
+  initialOdo?: number | null
+  tankCapacity?: number | null
+}): void {
+  if (values.name !== undefined && values.name.trim() === '') {
+    throw new Error('name(車両名)は空にできません')
+  }
+  assertNumber('initialOdo', values.initialOdo, { min: 0 })
+  assertNumber('tankCapacity', values.tankCapacity, { greaterThan: 0, nullable: true }) // null=クリア可
+}
+
 export function createVehicleRepository(database: AppDatabase) {
   return {
     /** 車両を登録して登録後のエンティティを返す */
     async create(input: VehicleInput): Promise<Vehicle> {
+      assertVehicleValues(input)
       const now = nowIso()
       const vehicle: Vehicle = {
         id: newId(),
@@ -103,6 +120,7 @@ export function createVehicleRepository(database: AppDatabase) {
 
     /** 車両情報を更新して更新後のエンティティを返す */
     async update(id: string, patch: VehicleUpdate): Promise<Vehicle> {
+      assertVehicleValues(patch)
       // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
       const changes = toUpdatePatch({ ...patch, updatedAt: nowIso() }, CLEARABLE_KEYS) as Partial<Vehicle>
       const updated = await database.vehicles.update(id, changes)

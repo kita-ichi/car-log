@@ -17,6 +17,7 @@ export type ValidationCode =
   | 'fuel_amount_required'
   | 'date_required'
   | 'maintenance_type_required'
+  | 'name_required'
   | 'invalid_number'
   // 警告(保存可)
   | 'odo_reversal'
@@ -172,6 +173,57 @@ export function validateFuelRecord(
         message: `算出燃費が ${preview.economy} km/L です(通常 ${ECONOMY_RANGE.min}〜${ECONOMY_RANGE.max} km/L)。入力ミスの可能性があります`,
       })
     }
+  }
+
+  return buildResult(issues)
+}
+
+/** 車両フォーム入力(S-08。入力途中の値。未入力は null/undefined) */
+export interface VehicleFormInput {
+  name?: string | null
+  initialOdo?: number | null
+  /** 任意項目。未入力は null/undefined(エラーにはならない) */
+  tankCapacity?: number | null
+}
+
+/**
+ * 車両登録・編集フォームのバリデーション(S-08)。
+ * 必須は車両名・登録時ODOの2項目。タンク容量は任意だが、入力された場合は正の数のみ。
+ */
+export function validateVehicle(input: VehicleFormInput): ValidationResult {
+  const issues: ValidationIssue[] = []
+
+  if (!input.name || input.name.trim() === '') {
+    issues.push({
+      level: 'error',
+      code: 'name_required',
+      field: 'name',
+      message: '車両名を入力してください',
+    })
+  }
+  if (isEmpty(input.initialOdo)) {
+    issues.push({
+      level: 'error',
+      code: 'odo_required',
+      field: 'initialOdo',
+      message: '登録時ODOを入力してください',
+    })
+  } else if (input.initialOdo < 0) {
+    issues.push({
+      level: 'error',
+      code: 'invalid_number',
+      field: 'initialOdo',
+      message: '登録時ODOは0以上で入力してください',
+    })
+  }
+  // タンク容量は任意: 未入力はエラーにしない。入力された場合のみ値をチェック
+  if (!isEmpty(input.tankCapacity) && input.tankCapacity <= 0) {
+    issues.push({
+      level: 'error',
+      code: 'invalid_number',
+      field: 'tankCapacity',
+      message: 'タンク容量は0より大きい値で入力してください',
+    })
   }
 
   return buildResult(issues)

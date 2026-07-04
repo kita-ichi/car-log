@@ -3,7 +3,7 @@
  */
 import { db, type AppDatabase } from '../database'
 import type { MaintenanceRecord, MaintenanceType } from '../../types/models'
-import { newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
+import { assertNumber, newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /** メンテナンス記録の新規作成入力 */
 export interface MaintenanceRecordInput {
@@ -37,6 +37,15 @@ export type MaintenanceRecordUpdate = Partial<
 /** null 指定で「キー削除」扱いにする任意項目 */
 const CLEARABLE_KEYS = ['typeLabel', 'shopName', 'memo'] as const
 
+/**
+ * create / update 入口の不変条件チェック(§6.1 不正データはこの層で弾く)。
+ * undefined のフィールドは「未指定」としてチェックしない(update の変更なし)。
+ */
+function assertMaintenanceValues(values: { odo?: number | null; cost?: number | null }): void {
+  assertNumber('odo', values.odo, { min: 0 })
+  assertNumber('cost', values.cost, { min: 0, nullable: true }) // 0円可・不明(null)可
+}
+
 /** 一覧の並び: 日付降順 → 同日はODO降順(S-06) */
 const byDateDesc = (a: MaintenanceRecord, b: MaintenanceRecord): number =>
   b.date.localeCompare(a.date) || b.odo - a.odo || b.createdAt.localeCompare(a.createdAt)
@@ -44,6 +53,7 @@ const byDateDesc = (a: MaintenanceRecord, b: MaintenanceRecord): number =>
 export function createMaintenanceRepository(database: AppDatabase) {
   return {
     async create(input: MaintenanceRecordInput): Promise<MaintenanceRecord> {
+      assertMaintenanceValues(input)
       const now = nowIso()
       const record: MaintenanceRecord = {
         id: newId(),
@@ -92,6 +102,7 @@ export function createMaintenanceRepository(database: AppDatabase) {
     },
 
     async update(id: string, patch: MaintenanceRecordUpdate): Promise<MaintenanceRecord> {
+      assertMaintenanceValues(patch)
       // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
       const changes = toUpdatePatch(
         { ...patch, updatedAt: nowIso() },

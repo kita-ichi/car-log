@@ -590,6 +590,63 @@ describe('maintenanceRepository', () => {
   })
 })
 
+describe('リポジトリ入口の値チェック(不正データは保存前に throw)', () => {
+  const validFuel = { vehicleId: 'v1', date: '2026-07-01', odo: 10000, fuelAmount: 40 }
+
+  it('給油記録: fuelAmount は 0 以下・NaN を拒否する', async () => {
+    const { fuelRecords } = setup()
+    await expect(fuelRecords.create({ ...validFuel, fuelAmount: 0 })).rejects.toThrow()
+    await expect(fuelRecords.create({ ...validFuel, fuelAmount: -5 })).rejects.toThrow()
+    await expect(fuelRecords.create({ ...validFuel, fuelAmount: NaN })).rejects.toThrow()
+  })
+
+  it('給油記録: odo はマイナス・NaN を拒否(0は許容)', async () => {
+    const { fuelRecords } = setup()
+    await expect(fuelRecords.create({ ...validFuel, odo: -1 })).rejects.toThrow()
+    await expect(fuelRecords.create({ ...validFuel, odo: NaN })).rejects.toThrow()
+    await expect(fuelRecords.create({ ...validFuel, odo: 0 })).resolves.toBeTruthy()
+  })
+
+  it('給油記録: 金額はマイナスを拒否(null=未入力は許容)', async () => {
+    const { fuelRecords } = setup()
+    await expect(fuelRecords.create({ ...validFuel, totalPrice: -100 })).rejects.toThrow()
+    await expect(fuelRecords.create({ ...validFuel, totalPrice: null })).resolves.toBeTruthy()
+  })
+
+  it('給油記録: update でも同じ不変条件で弾かれる(DBは変更されない)', async () => {
+    const { fuelRecords } = setup()
+    const record = await fuelRecords.create(validFuel)
+    await expect(fuelRecords.update(record.id, { fuelAmount: 0 })).rejects.toThrow()
+    await expect(fuelRecords.update(record.id, { odo: -1 })).rejects.toThrow()
+    expect((await fuelRecords.getById(record.id))?.fuelAmount).toBe(40) // 旧値のまま
+  })
+
+  it('メンテ記録: odo マイナス・cost マイナスを拒否(cost 0円・null は許容)', async () => {
+    const { maintenance } = setup()
+    const valid = { vehicleId: 'v1', type: 'oil_change' as const, date: '2026-07-01', odo: 10000 }
+    await expect(maintenance.create({ ...valid, odo: -1 })).rejects.toThrow()
+    await expect(maintenance.create({ ...valid, cost: -1 })).rejects.toThrow()
+    await expect(maintenance.create({ ...valid, cost: 0 })).resolves.toBeTruthy()
+    const record = await maintenance.create(valid)
+    await expect(maintenance.update(record.id, { cost: -500 })).rejects.toThrow()
+  })
+
+  it('車両: initialOdo マイナス・tankCapacity 0以下・空の車両名を拒否する', async () => {
+    const { vehicles } = setup()
+    await expect(vehicles.create({ name: 'ノート', initialOdo: -1 })).rejects.toThrow()
+    await expect(
+      vehicles.create({ name: 'ノート', initialOdo: 0, tankCapacity: 0 }),
+    ).rejects.toThrow()
+    await expect(vehicles.create({ name: '  ', initialOdo: 0 })).rejects.toThrow()
+
+    const vehicle = await vehicles.create({ name: 'ノート', initialOdo: 0 })
+    await expect(vehicles.update(vehicle.id, { tankCapacity: -10 })).rejects.toThrow()
+    await expect(vehicles.update(vehicle.id, { name: '' })).rejects.toThrow()
+    // tankCapacity: null はクリアとして許容
+    await expect(vehicles.update(vehicle.id, { tankCapacity: null })).resolves.toBeTruthy()
+  })
+})
+
 describe('settingsRepository', () => {
   it('選択中の車両IDを保存・復元・クリアできる', async () => {
     const { settings } = setup()
