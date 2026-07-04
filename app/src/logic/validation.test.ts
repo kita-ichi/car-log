@@ -172,6 +172,33 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
     expect(codes(result)).not.toContain('economy_out_of_range')
   })
 
+  it('未来日付は警告(保存はブロックしない)— B-3', () => {
+    const result = validateFuelRecord(
+      { ...validInput, date: '2026-07-05' },
+      { today: '2026-07-04' },
+    )
+    const warning = result.warnings.find((w) => w.code === 'future_date')
+    expect(warning).toBeDefined()
+    expect(warning?.level).toBe('warning')
+    expect(warning?.field).toBe('date')
+    expect(result.canSave).toBe(true) // 保存可
+  })
+
+  it('今日・過去の日付なら未来日付警告は出ない', () => {
+    expect(
+      codes(validateFuelRecord({ ...validInput, date: '2026-07-04' }, { today: '2026-07-04' })),
+    ).not.toContain('future_date')
+    expect(
+      codes(validateFuelRecord({ ...validInput, date: '2026-01-01' }, { today: '2026-07-04' })),
+    ).not.toContain('future_date')
+  })
+
+  it('today 省略時は端末ローカルの今日を基準にする(遠い未来は必ず警告)', () => {
+    expect(codes(validateFuelRecord({ ...validInput, date: '2999-01-01' }))).toContain(
+      'future_date',
+    )
+  })
+
   it('エラーと警告が同時に発生し得る(未入力エラー + 容量超過警告)', () => {
     const result = validateFuelRecord(
       { date: '2026-07-03', odo: null, fuelAmount: 45, isFullTank: true },
@@ -241,5 +268,18 @@ describe('validateMaintenanceRecord(メンテ入力・S-05)', () => {
     const result = validateMaintenanceRecord(validInput, { previousOdo: 11000 })
     expect(codes(result)).toContain('odo_reversal')
     expect(result.canSave).toBe(true)
+  })
+
+  it('未来日付は警告(保存はブロックしない)— B-3', () => {
+    const result = validateMaintenanceRecord(
+      { ...validInput, date: '2026-08-01' },
+      { today: '2026-07-04' },
+    )
+    expect(codes(result)).toContain('future_date')
+    expect(result.canSave).toBe(true)
+
+    expect(
+      codes(validateMaintenanceRecord({ ...validInput, date: '2026-07-04' }, { today: '2026-07-04' })),
+    ).not.toContain('future_date')
   })
 })

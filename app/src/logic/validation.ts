@@ -23,6 +23,7 @@ export type ValidationCode =
   | 'odo_reversal'
   | 'tank_capacity_exceeded'
   | 'economy_out_of_range'
+  | 'future_date'
 
 export interface ValidationIssue {
   level: ValidationLevel
@@ -43,6 +44,28 @@ export interface ValidationResult {
 
 /** 燃費の妥当範囲(km/L)。範囲外は入力ミスの可能性として警告(要件 §6.1) */
 export const ECONOMY_RANGE = { min: 1, max: 60 } as const
+
+/** 端末ローカルの今日 'YYYY-MM-DD'(テストでは context.today で差し替える) */
+const localToday = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`
+}
+
+/** 日付が未来なら警告を返す(B-4: 保存はブロックしない) */
+const futureDateIssue = (
+  date: string | null | undefined,
+  today: string | null | undefined,
+): ValidationIssue | null => {
+  if (!date || date <= (today || localToday())) return null
+  return {
+    level: 'warning',
+    code: 'future_date',
+    field: 'date',
+    message: '未来の日付です。入力ミスの可能性があります',
+  }
+}
 
 const buildResult = (issues: ValidationIssue[]): ValidationResult => {
   const errors = issues.filter((i) => i.level === 'error')
@@ -68,6 +91,8 @@ export interface FuelValidationContext {
   tankCapacity?: number | null
   /** 対象車両の既存の全給油記録(燃費範囲警告のプレビュー計算に使用) */
   existingRecords?: readonly FuelRecordForCalc[]
+  /** 「今日」の 'YYYY-MM-DD'(未来日付警告の基準)。省略時は端末ローカルの今日 */
+  today?: string | null
 }
 
 const isEmpty = (v: number | null | undefined): v is null | undefined =>
@@ -135,6 +160,9 @@ export function validateFuelRecord(
   }
 
   // --- 警告(保存はブロックしない) ---
+  const futureDate = futureDateIssue(input.date, context.today)
+  if (futureDate) issues.push(futureDate)
+
   if (!isEmpty(input.odo) && input.odo >= 0) {
     const prev = context.previousOdo
     if (prev !== null && prev !== undefined && input.odo < prev) {
@@ -242,6 +270,8 @@ export interface MaintenanceFormInput {
 export interface MaintenanceValidationContext {
   /** 対象車両の最新給油記録などから推定した現在ODO(逆行警告に使用) */
   previousOdo?: number | null
+  /** 「今日」の 'YYYY-MM-DD'(未来日付警告の基準)。省略時は端末ローカルの今日 */
+  today?: string | null
 }
 
 /**
@@ -293,6 +323,9 @@ export function validateMaintenanceRecord(
       message: '費用は0以上で入力してください',
     })
   }
+
+  const futureDate = futureDateIssue(input.date, context.today)
+  if (futureDate) issues.push(futureDate)
 
   if (!isEmpty(input.odo) && input.odo >= 0) {
     const prev = context.previousOdo
