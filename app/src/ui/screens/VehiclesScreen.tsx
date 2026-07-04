@@ -100,11 +100,23 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   const [form, setForm] = useState<FormState>(emptyForm())
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** アーカイブ済み車両(B-1: 復元導線)。折りたたみ表示 */
+  const [archived, setArchived] = useState<Vehicle[]>([])
+  const [showArchived, setShowArchived] = useState(false)
   const formRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (editing !== null) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [editing])
+
+  const loadArchived = async () => {
+    const all = await vehicleRepository.listAll()
+    setArchived(all.filter((v) => v.isArchived))
+  }
+
+  useEffect(() => {
+    void loadArchived().catch((err) => console.error('アーカイブ済み車両の読込に失敗:', err))
+  }, [])
 
   const openForm = (target: 'new' | Vehicle) => {
     setForm(target === 'new' ? emptyForm() : formFromVehicle(target))
@@ -179,6 +191,26 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
       setConfirmArchive(false)
       showToast('アーカイブに失敗しました。もう一度お試しください')
     }
+    await loadArchived().catch(() => {})
+  }
+
+  /** アーカイブ済み車両を一覧に復元する(B-1) */
+  const handleRestore = async (v: Vehicle) => {
+    const wasOnboarding = isOnboarding
+    try {
+      await vehicleRepository.unarchive(v.id)
+      const list = await refreshVehicles()
+      await loadArchived()
+      showToast(`${v.name} を復元しました`)
+      // 全車両アーカイブ→オンボーディング中の復元: そのまま利用再開できるようホームへ
+      if (wasOnboarding && list.length > 0) {
+        await selectVehicle(v.id)
+        navigate({ name: 'home' })
+      }
+    } catch (err) {
+      console.error('車両の復元に失敗:', err)
+      showToast('復元に失敗しました。もう一度お試しください')
+    }
   }
 
   const handleRowTap = async (v: Vehicle) => {
@@ -186,6 +218,47 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
     await selectVehicle(v.id)
     showToast(`${v.name} に切り替えました`)
   }
+
+  /** アーカイブ済みセクション(折りたたみ)。通常時は一覧の下、オンボーディング時は案内の下に出す */
+  const archivedSection = archived.length > 0 && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button
+        className="link"
+        style={{ textAlign: 'left', margin: '0 4px' }}
+        aria-expanded={showArchived}
+        onClick={() => setShowArchived((s) => !s)}
+      >
+        アーカイブ済みの車両({archived.length}台){showArchived ? 'を隠す ▲' : 'を表示 ▼'}
+      </button>
+      {showArchived && (
+        <>
+          <div className="list">
+            {archived.map((v) => (
+              <div key={v.id} className="row static">
+                <span style={{ color: 'var(--c-sub)', display: 'flex' }}>
+                  <VehicleIcon type={v.vehicleType} size={24} />
+                </span>
+                <div className="grow">
+                  <div style={{ fontWeight: 700 }}>{v.name}</div>
+                  <div className="sub num">
+                    {[vehicleTypeLabel(v.vehicleType), [v.maker, v.model].filter(Boolean).join(' ')]
+                      .filter(Boolean)
+                      .join(' ・ ')}
+                  </div>
+                </div>
+                <button className="link" onClick={() => void handleRestore(v)}>
+                  復元
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="sub" style={{ margin: '0 4px' }}>
+            復元すると車両一覧に戻ります。給油・メンテの記録はアーカイブ中も保持されています。
+          </p>
+        </>
+      )}
+    </div>
+  )
 
   return (
     <section className="screen">
@@ -199,9 +272,12 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
 
       <div className="body-pad" style={{ gap: 12 }}>
         {isOnboarding ? (
-          <p className="sub" style={{ margin: '0 4px' }}>
-            最初に車両(車・バイク)を1台登録してください。登録後すぐに給油の記録を始められます。
-          </p>
+          <>
+            <p className="sub" style={{ margin: '0 4px' }}>
+              最初に車両(車・バイク)を1台登録してください。登録後すぐに給油の記録を始められます。
+            </p>
+            {archivedSection}
+          </>
         ) : (
           <>
             <div className="list">
@@ -253,6 +329,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
               <PlusIcon size={20} />
               車両を追加
             </button>
+            {archivedSection}
           </>
         )}
 
