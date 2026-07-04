@@ -158,6 +158,9 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
       }
       showToast(`${saved.name} を保存しました`)
       if (wasOnboarding) navigate({ name: 'home' }) // 初回登録後はホームへ
+    } catch (err) {
+      console.error('車両の保存に失敗:', err)
+      showToast('保存に失敗しました。もう一度お試しください')
     } finally {
       setSaving(false)
     }
@@ -165,11 +168,17 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
 
   const handleArchive = async () => {
     if (editing === null || editing === 'new') return
-    await vehicleRepository.archive(editing.id)
-    setConfirmArchive(false)
-    setEditing(null)
-    await refreshVehicles()
-    showToast(`${editing.name} をアーカイブしました(記録は保持されます)`)
+    try {
+      await vehicleRepository.archive(editing.id)
+      setConfirmArchive(false)
+      setEditing(null)
+      await refreshVehicles()
+      showToast(`${editing.name} をアーカイブしました(記録は保持されます)`)
+    } catch (err) {
+      console.error('車両のアーカイブに失敗:', err)
+      setConfirmArchive(false)
+      showToast('アーカイブに失敗しました。もう一度お試しください')
+    }
   }
 
   const handleRowTap = async (v: Vehicle) => {

@@ -296,6 +296,9 @@ export function FuelNewScreen() {
           : '保存しました(燃費は次の満タン給油で確定します)',
       )
       navigate({ name: 'home' })
+    } catch (err) {
+      console.error('給油記録の保存に失敗:', err)
+      showToast('保存に失敗しました。もう一度お試しください')
     } finally {
       setSaving(false)
     }
@@ -424,16 +427,25 @@ export function FuelDetailScreen({ id }: { id: string }) {
       })
       showToast('変更を保存しました(影響区間の燃費を再計算)')
       navigate({ name: 'fuel-list' })
+    } catch (err) {
+      console.error('給油記録の更新に失敗:', err)
+      showToast('保存に失敗しました。もう一度お試しください')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    await fuelRecordRepository.remove(record.id)
-    setConfirmDelete(false)
-    showToast('記録を削除しました')
-    navigate({ name: 'fuel-list' })
+    try {
+      await fuelRecordRepository.remove(record.id)
+      setConfirmDelete(false)
+      showToast('記録を削除しました')
+      navigate({ name: 'fuel-list' })
+    } catch (err) {
+      console.error('給油記録の削除に失敗:', err)
+      setConfirmDelete(false)
+      showToast('削除に失敗しました。もう一度お試しください')
+    }
   }
 
   return (

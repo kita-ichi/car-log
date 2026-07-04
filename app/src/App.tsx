@@ -12,8 +12,32 @@ import { GraphScreen } from './ui/screens/GraphScreen'
 import { VehiclesScreen } from './ui/screens/VehiclesScreen'
 import { SettingsScreen } from './ui/screens/SettingsScreen'
 
+/** 起動失敗時のエラー画面(DBが開けない等。白画面のままにしない) */
+function InitErrorScreen() {
+  return (
+    <section className="screen">
+      <div className="body-pad" style={{ gap: 12, paddingTop: 48 }}>
+        <div className="empty-state">
+          <p style={{ fontWeight: 700, fontSize: 16, margin: '0 0 8px' }}>
+            データを読み込めませんでした
+          </p>
+          <p style={{ margin: 0 }}>
+            データベースを開けませんでした。ブラウザのプライベートモード(シークレットモード)では利用できない場合があります。
+            <br />
+            通常モードで開き直すか、再読み込みをお試しください。
+          </p>
+        </div>
+        <button className="btn secondary" onClick={() => window.location.reload()}>
+          再読み込み
+        </button>
+      </div>
+    </section>
+  )
+}
+
 function CurrentScreen() {
-  const { route, ready, vehicles } = useApp()
+  const { route, ready, initError, vehicles } = useApp()
+  if (initError) return <InitErrorScreen />
   if (!ready) return null
 
   // オンボーディング: 車両0台の間は車両登録(S-08)に固定

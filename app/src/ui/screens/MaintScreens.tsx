@@ -251,6 +251,9 @@ export function MaintNewScreen() {
       })
       showToast('メンテ記録を保存しました')
       navigate({ name: 'maint-list' })
+    } catch (err) {
+      console.error('メンテ記録の保存に失敗:', err)
+      showToast('保存に失敗しました。もう一度お試しください')
     } finally {
       setSaving(false)
     }
@@ -351,16 +354,25 @@ export function MaintDetailScreen({ id }: { id: string }) {
       })
       showToast('変更を保存しました')
       navigate({ name: 'maint-list' })
+    } catch (err) {
+      console.error('メンテ記録の更新に失敗:', err)
+      showToast('保存に失敗しました。もう一度お試しください')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    await maintenanceRepository.remove(record.id)
-    setConfirmDelete(false)
-    showToast('記録を削除しました')
-    navigate({ name: 'maint-list' })
+    try {
+      await maintenanceRepository.remove(record.id)
+      setConfirmDelete(false)
+      showToast('記録を削除しました')
+      navigate({ name: 'maint-list' })
+    } catch (err) {
+      console.error('メンテ記録の削除に失敗:', err)
+      setConfirmDelete(false)
+      showToast('削除に失敗しました。もう一度お試しください')
+    }
   }
 
   return (

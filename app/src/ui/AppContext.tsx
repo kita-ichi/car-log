@@ -61,6 +61,8 @@ export const isModalRoute = (route: Route): boolean =>
 interface AppContextValue {
   /** 初期ロード(車両・選択状態の復元)完了か */
   ready: boolean
+  /** 起動時のDBオープン・読込に失敗したか(true ならエラー画面を表示) */
+  initError: boolean
   route: Route
   navigate: (route: Route) => void
   vehicles: Vehicle[]
@@ -80,6 +82,7 @@ const AppContext = createContext<AppContextValue | null>(null)
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
+  const [initError, setInitError] = useState(false)
   const [route, setRoute] = useState<Route>({ name: 'home' })
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
@@ -91,21 +94,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [list, savedId] = await Promise.all([
-        vehicleRepository.listActive(),
-        settingsRepository.getSelectedVehicleId(),
-      ])
-      if (cancelled) return
-      setVehicles(list)
-      if (list.length === 0) {
-        setRoute({ name: 'vehicles', openForm: true })
-      } else {
-        const valid = savedId !== null && list.some((v) => v.id === savedId)
-        const id = valid ? savedId : list[0].id
-        setSelectedVehicleId(id)
-        if (!valid) void settingsRepository.setSelectedVehicleId(id)
+      try {
+        const [list, savedId] = await Promise.all([
+          vehicleRepository.listActive(),
+          settingsRepository.getSelectedVehicleId(),
+        ])
+        if (cancelled) return
+        setVehicles(list)
+        if (list.length === 0) {
+          setRoute({ name: 'vehicles', openForm: true })
+        } else {
+          const valid = savedId !== null && list.some((v) => v.id === savedId)
+          const id = valid ? savedId : list[0].id
+          setSelectedVehicleId(id)
+          if (!valid) void settingsRepository.setSelectedVehicleId(id)
+        }
+        setReady(true)
+      } catch (err) {
+        // IndexedDB が開けない(プライベートモード等)と reject する。白画面のまま
+        // にせずエラー画面(App.tsx)へフォールバックする
+        console.error('起動時のデータ読込に失敗:', err)
+        if (!cancelled) setInitError(true)
       }
-      setReady(true)
     })()
     return () => {
       cancelled = true
@@ -158,6 +168,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AppContextValue>(
     () => ({
       ready,
+      initError,
       route,
       navigate,
       vehicles,
@@ -172,6 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       ready,
+      initError,
       route,
       navigate,
       vehicles,
