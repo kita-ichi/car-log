@@ -130,14 +130,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const list = await vehicleRepository.listActive()
     setVehicles(list)
     // 選択中車両がアーカイブ等で消えた場合は先頭車両へフォールバック
-    setSelectedVehicleId((current) => {
-      if (current !== null && list.some((v) => v.id === current)) return current
+    // (永続化などの副作用は state updater の外で行う — StrictMode で二重実行されるため)
+    const keep = selectedVehicleId !== null && list.some((v) => v.id === selectedVehicleId)
+    if (!keep) {
       const fallback = list[0]?.id ?? null
-      void settingsRepository.setSelectedVehicleId(fallback)
-      return fallback
-    })
+      setSelectedVehicleId(fallback)
+      await settingsRepository.setSelectedVehicleId(fallback)
+    }
     return list
-  }, [])
+  }, [selectedVehicleId])
 
   const selectVehicle = useCallback(
     async (id: string): Promise<Vehicle | null> => {
