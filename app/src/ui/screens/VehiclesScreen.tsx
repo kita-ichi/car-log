@@ -8,10 +8,18 @@ import { useEffect, useRef, useState } from 'react'
 import type { FuelType, Vehicle, VehicleType } from '../../types/models'
 import { vehicleRepository } from '../../db/repositories'
 import { validateVehicle } from '../../logic/validation'
+import { elapsedYearsMonths } from '../../logic/vehicleAge'
 import { useApp } from '../AppContext'
 import { ConfirmDialog, ModalAppBar } from '../components'
 import { BikeIcon, CarIcon, PlusIcon, VehicleIcon } from '../icons'
-import { fmtKm, fuelTypeLabel, vehicleTypeLabel } from '../format'
+import { fmtKm, fmtYm, fuelTypeLabel, vehicleTypeLabel } from '../format'
+
+/** 一覧の補足表示「初度登録 2020年4月(5年3ヶ月)」。未設定は null(非表示) */
+const firstRegistrationLabel = (v: Vehicle): string | null => {
+  if (!v.firstRegistrationYm) return null
+  const elapsed = elapsedYearsMonths(v.firstRegistrationYm, new Date())
+  return `初度登録 ${fmtYm(v.firstRegistrationYm)}${elapsed !== null ? `(${elapsed})` : ''}`
+}
 
 /** メーカー候補(デザインガイド 5.14。車両タイプに応じて切替) */
 const MAKERS: Record<VehicleType, string[]> = {
@@ -134,6 +142,11 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
       return { ...f, vehicleType: type, makerSelect: keep ? f.makerSelect : '' }
     })
   }
+
+  // 初度登録からの経過年月のライブ表示(入力があり、かつ過去の年月のときのみ)
+  const firstRegElapsed = form.firstRegistrationYm
+    ? elapsedYearsMonths(form.firstRegistrationYm, new Date())
+    : null
 
   const odoValue = Number(form.initialOdo)
   // ライブバリデーション(§0.2): エラーがあれば保存無効化(負・0のタンク容量なども弾く)
@@ -310,6 +323,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                           [v.maker, v.model].filter(Boolean).join(' '),
                           `ODO ${fmtKm(v.initialOdo)} km〜`,
                           fuelTypeLabel(v.fuelType),
+                          firstRegistrationLabel(v),
                         ]
                           .filter(Boolean)
                           .join(' ・ ')}
@@ -437,6 +451,9 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                 value={form.firstRegistrationYm}
                 onChange={(e) => set('firstRegistrationYm', e.target.value)}
               />
+              {firstRegElapsed !== null && (
+                <div className="hint">初度登録から {firstRegElapsed}</div>
+              )}
             </div>
 
             <div className="field">

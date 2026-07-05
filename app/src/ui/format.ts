@@ -49,6 +49,12 @@ export const fmtWeekday = (date: string): string => WEEKDAYS[parseDate(date).get
 /** 'YYYY-MM-DD' → 「2026/07/01」 */
 export const fmtDateFull = (date: string): string => date.replaceAll('-', '/')
 
+/** 'YYYY-MM' → 「2020年4月」(初度登録年月の表示) */
+export const fmtYm = (ym: string): string => {
+  const [y, m] = ym.split('-').map(Number)
+  return `${y}年${m}月`
+}
+
 /** 今日('YYYY-MM-DD'・ローカルタイム) */
 export const todayString = (): string => {
   const d = new Date()
