@@ -9,13 +9,12 @@ import { assertNumber, newId, nowIso, stripAbsent, toUpdatePatch } from './helpe
 /** 車両の新規登録入力(id・タイムスタンプ・アーカイブ状態は自動付与) */
 export interface VehicleInput {
   name: string
-  /** 登録時点のODO(km)。ODO入力チェック(逆行警告)の基準 */
-  initialOdo: number
   /** 省略時 'car' */
   vehicleType?: VehicleType
   /** 省略時 'regular' */
   fuelType?: FuelType
   /** 任意項目。未設定は省略または null */
+  initialOdo?: number | null
   maker?: string | null
   model?: string | null
   firstRegistrationYm?: string | null
@@ -25,7 +24,7 @@ export interface VehicleInput {
 
 /**
  * 編集可能なフィールド(id・createdAt は変更不可)。
- * 任意項目(maker / model / firstRegistrationYm / tankCapacity / inspectionExpiry)は
+ * 任意項目(initialOdo / maker / model / firstRegistrationYm / tankCapacity / inspectionExpiry)は
  * null 指定で「クリア(値の削除)」、undefined(キー省略)で「変更なし」(§update系の共通契約)。
  */
 export type VehicleUpdate = Partial<
@@ -34,6 +33,7 @@ export type VehicleUpdate = Partial<
     | 'id'
     | 'createdAt'
     | 'updatedAt'
+    | 'initialOdo'
     | 'maker'
     | 'model'
     | 'firstRegistrationYm'
@@ -41,6 +41,7 @@ export type VehicleUpdate = Partial<
     | 'inspectionExpiry'
   >
 > & {
+  initialOdo?: number | null
   maker?: string | null
   model?: string | null
   firstRegistrationYm?: string | null
@@ -50,6 +51,7 @@ export type VehicleUpdate = Partial<
 
 /** null 指定で「キー削除」扱いにする任意項目 */
 const CLEARABLE_KEYS = [
+  'initialOdo',
   'maker',
   'model',
   'firstRegistrationYm',
@@ -69,7 +71,7 @@ function assertVehicleValues(values: {
   if (values.name !== undefined && values.name.trim() === '') {
     throw new Error('name(車両名)は空にできません')
   }
-  assertNumber('initialOdo', values.initialOdo, { min: 0 })
+  assertNumber('initialOdo', values.initialOdo, { min: 0, nullable: true }) // 未設定可・null=クリア可。設定時は0以上
   assertNumber('tankCapacity', values.tankCapacity, { greaterThan: 0, nullable: true }) // null=クリア可
 }
 
@@ -87,8 +89,8 @@ export function createVehicleRepository(database: AppDatabase) {
         vehicleType: input.vehicleType ?? 'car',
         fuelType: input.fuelType ?? 'regular',
         name: input.name,
-        initialOdo: input.initialOdo,
         ...stripAbsent({
+          initialOdo: input.initialOdo,
           maker: input.maker,
           model: input.model,
           firstRegistrationYm: input.firstRegistrationYm,

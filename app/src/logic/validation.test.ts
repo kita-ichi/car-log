@@ -49,6 +49,13 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
     expect(codes(result)).not.toContain('odo_reversal')
   })
 
+  it('基準(previousOdo)が無ければ逆行警告は出ない — 登録時ODO未設定の車両の最初の給油', () => {
+    expect(codes(validateFuelRecord({ ...validInput, odo: 0 }, { previousOdo: null }))).not.toContain(
+      'odo_reversal',
+    )
+    expect(codes(validateFuelRecord({ ...validInput, odo: 0 }, {}))).not.toContain('odo_reversal')
+  })
+
   it('タンク容量超過は警告(保存可)', () => {
     const result = validateFuelRecord(
       { ...validInput, fuelAmount: 45 },
@@ -213,8 +220,9 @@ describe('validateFuelRecord(給油入力・画面設計書 §0.2)', () => {
 describe('validateVehicle(車両フォーム・S-08)', () => {
   const validInput = { name: 'ノート', initialOdo: 10000 }
 
-  it('車両名・登録時ODOが揃っていれば保存可(他は任意)', () => {
+  it('車両名だけで保存可(登録時ODO含め他は任意)', () => {
     expect(validateVehicle(validInput).canSave).toBe(true)
+    expect(validateVehicle({ name: 'ノート' }).canSave).toBe(true)
   })
 
   it('車両名未入力・空白のみはエラー', () => {
@@ -224,9 +232,13 @@ describe('validateVehicle(車両フォーム・S-08)', () => {
     expect(validateVehicle({ ...validInput, name: '' }).canSave).toBe(false)
   })
 
-  it('登録時ODO未入力はエラー、マイナスはエラー、0は許容', () => {
-    expect(codes(validateVehicle({ ...validInput, initialOdo: null }))).toContain('odo_required')
-    expect(validateVehicle({ ...validInput, initialOdo: -1 }).canSave).toBe(false)
+  it('登録時ODOは未入力OK(任意)、入力時のみマイナス・NaNはエラー、0は許容', () => {
+    expect(validateVehicle({ ...validInput, initialOdo: null }).canSave).toBe(true)
+    expect(validateVehicle({ ...validInput, initialOdo: undefined }).canSave).toBe(true)
+    const negative = validateVehicle({ ...validInput, initialOdo: -1 })
+    expect(codes(negative)).toContain('invalid_number')
+    expect(negative.canSave).toBe(false)
+    expect(validateVehicle({ ...validInput, initialOdo: Number.NaN }).canSave).toBe(false)
     expect(validateVehicle({ ...validInput, initialOdo: 0 }).canSave).toBe(true)
   })
 

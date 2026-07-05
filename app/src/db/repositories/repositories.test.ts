@@ -68,6 +68,7 @@ describe('vehicleRepository', () => {
     })
 
     await vehicles.update(vehicle.id, {
+      initialOdo: null,
       maker: null,
       model: null,
       firstRegistrationYm: null,
@@ -76,12 +77,33 @@ describe('vehicleRepository', () => {
     })
 
     const fetched = await vehicles.getById(vehicle.id)
+    expect(fetched?.initialOdo).toBeUndefined()
     expect(fetched?.maker).toBeUndefined()
     expect(fetched?.model).toBeUndefined()
     expect(fetched?.firstRegistrationYm).toBeUndefined()
     expect(fetched?.tankCapacity).toBeUndefined()
     expect(fetched?.inspectionExpiry).toBeUndefined()
     expect(fetched?.name).toBe('ノート') // 未指定のフィールドは変わらない
+  })
+
+  it('登録時ODO(initialOdo)は任意 — 未設定で車両を作成できる(キー自体を保存しない)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート' })
+    expect(vehicle.initialOdo).toBeUndefined()
+    const fetched = await vehicles.getById(vehicle.id)
+    expect(fetched && 'initialOdo' in fetched).toBe(false)
+    // null 指定でも同じく「未設定」
+    const vehicle2 = await vehicles.create({ name: 'MT-07', initialOdo: null })
+    expect(vehicle2.initialOdo).toBeUndefined()
+  })
+
+  it('登録時ODOの update: undefined=変更なし / 設定時は0以上のみ許容', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', initialOdo: 10000 })
+    await vehicles.update(vehicle.id, { name: 'ノート e-POWER' })
+    expect((await vehicles.getById(vehicle.id))?.initialOdo).toBe(10000) // 変更なし
+    await expect(vehicles.update(vehicle.id, { initialOdo: -1 })).rejects.toThrow()
+    await expect(vehicles.update(vehicle.id, { initialOdo: Number.NaN })).rejects.toThrow()
   })
 
   it('undefined(キー省略)は「変更なし」— 任意項目の旧値が保持される', async () => {

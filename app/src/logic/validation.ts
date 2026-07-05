@@ -211,6 +211,7 @@ export function validateFuelRecord(
 /** 車両フォーム入力(S-08。入力途中の値。未入力は null/undefined) */
 export interface VehicleFormInput {
   name?: string | null
+  /** 任意項目。未入力は null/undefined(エラーにはならない) */
   initialOdo?: number | null
   /** 任意項目。未入力は null/undefined(エラーにはならない) */
   tankCapacity?: number | null
@@ -218,7 +219,8 @@ export interface VehicleFormInput {
 
 /**
  * 車両登録・編集フォームのバリデーション(S-08)。
- * 必須は車両名・登録時ODOの2項目。タンク容量は任意だが、入力された場合は正の数のみ。
+ * 必須は車両名のみ。登録時ODO・タンク容量は任意だが、入力された場合のみ値をチェックする
+ * (登録時ODOは0以上、タンク容量は正の数)。
  */
 export function validateVehicle(input: VehicleFormInput): ValidationResult {
   const issues: ValidationIssue[] = []
@@ -231,14 +233,12 @@ export function validateVehicle(input: VehicleFormInput): ValidationResult {
       message: '車両名を入力してください',
     })
   }
-  if (isEmpty(input.initialOdo)) {
-    issues.push({
-      level: 'error',
-      code: 'odo_required',
-      field: 'initialOdo',
-      message: '登録時ODOを入力してください',
-    })
-  } else if (input.initialOdo < 0) {
+  // 登録時ODOは任意: 未入力はエラーにしない。入力された場合のみ値をチェック(NaN・負値)
+  if (
+    input.initialOdo !== null &&
+    input.initialOdo !== undefined &&
+    (Number.isNaN(input.initialOdo) || input.initialOdo < 0)
+  ) {
     issues.push({
       level: 'error',
       code: 'invalid_number',

@@ -91,7 +91,7 @@ const formFromVehicle = (v: Vehicle): FormState => {
     makerFree: v.maker && !inList ? v.maker : '',
     model: v.model ?? '',
     firstRegistrationYm: v.firstRegistrationYm ?? '',
-    initialOdo: String(v.initialOdo),
+    initialOdo: v.initialOdo !== undefined ? String(v.initialOdo) : '',
     fuelType: v.fuelType,
     tankCapacity: v.tankCapacity !== undefined ? String(v.tankCapacity) : '',
     inspectionExpiry: v.inspectionExpiry ?? '',
@@ -171,7 +171,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
         maker: maker || null,
         model: form.model.trim() || null,
         firstRegistrationYm: form.firstRegistrationYm || null,
-        initialOdo: odoValue,
+        initialOdo: form.initialOdo.trim() !== '' ? odoValue : null,
         fuelType: form.fuelType,
         tankCapacity: form.tankCapacity !== '' ? Number(form.tankCapacity) : null,
         inspectionExpiry: form.inspectionExpiry || null,
@@ -321,7 +321,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                         {[
                           vehicleTypeLabel(v.vehicleType),
                           [v.maker, v.model].filter(Boolean).join(' '),
-                          `ODO ${fmtKm(v.initialOdo)} km〜`,
+                          v.initialOdo !== undefined ? `ODO ${fmtKm(v.initialOdo)} km〜` : null,
                           fuelTypeLabel(v.fuelType),
                           firstRegistrationLabel(v),
                         ]
@@ -458,7 +458,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
 
             <div className="field">
               <label htmlFor="v-odo">
-                登録時ODO <span className="req">*</span>
+                登録時ODO <span className="opt">任意</span>
               </label>
               <div className="inrow">
                 <input
@@ -466,7 +466,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                   type="number"
                   inputMode="numeric"
                   className="num-lg"
-                  placeholder="0"
+                  placeholder="—"
                   value={form.initialOdo}
                   onChange={(e) => set('initialOdo', e.target.value)}
                 />

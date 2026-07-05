@@ -168,9 +168,11 @@ export function VehicleSheet() {
   if (!vehicleSheetOpen) return null
 
   const describe = (v: Vehicle): string => {
-    const latest = latestMap.get(v.id)
-    const odo = latest ? latest.odo : v.initialOdo
-    return [v.maker, `ODO ${fmtKm(odo)} km`].filter(Boolean).join(' ・ ')
+    // 最新給油記録のODO。無ければ登録時ODO(任意)。どちらも無ければODO表示なし
+    const odo = latestMap.get(v.id)?.odo ?? v.initialOdo
+    return [v.maker, odo !== undefined ? `ODO ${fmtKm(odo)} km` : null]
+      .filter(Boolean)
+      .join(' ・ ')
   }
 
   const handleSelect = async (v: Vehicle) => {

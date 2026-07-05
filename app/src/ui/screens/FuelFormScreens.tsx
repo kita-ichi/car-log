@@ -264,8 +264,9 @@ export function FuelNewScreen() {
   if (!selectedVehicle) return null
 
   // 前回値(逆行警告・ヒント)の基準: 入力日付の「直前」の記録。
-  // 過去日付の後追い入力では最新記録ではなく時系列上の直前と比較する
-  const previousOdo = findPreviousRecord(existing, form.date)?.odo ?? selectedVehicle.initialOdo
+  // 過去日付の後追い入力では最新記録ではなく時系列上の直前と比較する。
+  // 記録がなければ登録時ODO(任意)。それも未設定なら null = 基準なし(逆行警告なし・ヒント非表示)
+  const previousOdo = findPreviousRecord(existing, form.date)?.odo ?? selectedVehicle.initialOdo ?? null
   const previousUnitPrice = existing[existing.length - 1]?.unitPrice ?? null
 
   const odo = toNum(form.odo)
