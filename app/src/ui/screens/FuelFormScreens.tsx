@@ -15,6 +15,7 @@ import {
   findPreviousRecord,
   previewFuelEconomy,
 } from '../../logic/fuelEconomy'
+import { frequentStations } from '../../logic/stations'
 import { validateFuelRecord, type ValidationResult } from '../../logic/validation'
 import { useApp } from '../AppContext'
 import {
@@ -73,6 +74,9 @@ function FuelRecordFormFields({
   // 単価のライブ表示(金額入力時のみ — §0.3)
   const unitPrice =
     totalPrice !== null && fuelAmount !== null ? computeUnitPrice(totalPrice, fuelAmount) : null
+
+  // よく使う給油所(対象車両の記録から頻度順に最大3件 — F-10 クイック選択)
+  const stationSuggestions = useMemo(() => frequentStations(existing), [existing])
 
   // 燃費プレビュー(満タンON+ODO・給油量入力済み。金額不要 — S-02 §7)
   // date も渡す: 過去日付の後追い入力でも実際の時系列位置(直前の満タン→入力)で計算する
@@ -202,6 +206,25 @@ function FuelRecordFormFields({
           value={form.stationName}
           onChange={(e) => set('stationName', e.target.value)}
         />
+        {stationSuggestions.length > 0 && (
+          <div className="chips station-chips" aria-label="よく使う給油所">
+            {stationSuggestions.map((name) => {
+              const active = form.stationName.trim() === name
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className={`chip${active ? ' active' : ''}`}
+                  aria-pressed={active}
+                  // 一致するチップの再タップは選択解除(欄をクリア)。手入力は従来どおり可
+                  onClick={() => set('stationName', active ? '' : name)}
+                >
+                  {name}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="field">

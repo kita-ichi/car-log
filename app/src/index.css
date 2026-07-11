@@ -709,6 +709,10 @@ body {
   border-color: var(--c-panel);
   font-weight: 700;
 }
+/* よく使う給油所のクイック選択(S-02/S-04: 給油所名欄の直下) */
+.field .station-chips {
+  margin-top: 8px;
+}
 /* 種別選択グリッド */
 .typegrid {
   display: flex;
