@@ -2,7 +2,7 @@
  * 愛車の写真(F-22)— 画像処理の純粋関数のテスト
  * - fitWithin: 縮小・拡大しない・アスペクト比維持・極端な縦横比・不正値
  * - assertProcessableImage: 画像以外 / SVG / 空 / 上限超過
- * - formatByteSize: 表示整形
+ * - formatByteSize / formatCompressionNote / formatPhotoSummary: 表示整形
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -12,6 +12,8 @@ import {
   assertProcessableImage,
   fitWithin,
   formatByteSize,
+  formatCompressionNote,
+  formatPhotoSummary,
   needsDownscale,
 } from './image'
 
@@ -158,5 +160,38 @@ describe('formatByteSize', () => {
   it('不正値は「—」', () => {
     expect(formatByteSize(Number.NaN)).toBe('—')
     expect(formatByteSize(-1)).toBe('—')
+  })
+})
+
+describe('formatCompressionNote(圧縮前後の表示・S-08)', () => {
+  it('縮んだ場合は「元 → 保存後」を返す', () => {
+    // iPhone の 12MP 写真 3.4MB → 210KB 相当
+    expect(formatCompressionNote(3.4 * 1024 * 1024, 210 * 1024)).toBe('3.4 MB → 210 KB')
+  })
+
+  it('元ファイルが既に小さく縮まなかった場合は保存後のサイズだけを出す', () => {
+    expect(formatCompressionNote(100 * 1024, 120 * 1024)).toBe('120 KB')
+    expect(formatCompressionNote(120 * 1024, 120 * 1024)).toBe('120 KB')
+  })
+
+  it('元サイズが不明(NaN)でも保存後のサイズは出す', () => {
+    expect(formatCompressionNote(Number.NaN, 64 * 1024)).toBe('64 KB')
+  })
+
+  it('保存後のサイズが不正なら「—」', () => {
+    expect(formatCompressionNote(1024, Number.NaN)).toBe('—')
+  })
+})
+
+describe('formatPhotoSummary(写真の容量サマリ・S-09)', () => {
+  it('枚数と合計サイズを「写真 3枚 ・ 約 620 KB」形式で返す', () => {
+    expect(formatPhotoSummary(3, 620 * 1024)).toBe('写真 3枚 ・ 約 620 KB')
+    expect(formatPhotoSummary(1, 210 * 1024)).toBe('写真 1枚 ・ 約 210 KB')
+  })
+
+  it('0枚・不正値は null(呼び出し側で別の文言に差し替える)', () => {
+    expect(formatPhotoSummary(0, 0)).toBeNull()
+    expect(formatPhotoSummary(-1, 100)).toBeNull()
+    expect(formatPhotoSummary(Number.NaN, 100)).toBeNull()
   })
 })

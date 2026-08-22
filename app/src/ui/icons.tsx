@@ -128,6 +128,15 @@ export const CheckIcon = (p: IconProps) => (
   </Svg>
 )
 
+/** 写真(枠+山と丸の線画。デザインガイド 5.15) */
+export const PhotoIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="8.5" cy="9.5" r="1.5" />
+    <path d="M21 16l-5-5-9 9" />
+  </Svg>
+)
+
 /** ダウンロード(エクスポート) */
 export const DownloadIcon = (p: IconProps) => (
   <Svg {...p}>

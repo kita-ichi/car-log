@@ -170,3 +170,25 @@ export function formatByteSize(bytes: number): string {
   const mb = kb / 1024
   return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`
 }
+
+/**
+ * 圧縮前後のサイズ表示(S-08 写真ピッカー): 「3.4 MB → 210 KB」。
+ *
+ * 元ファイルが既に小さく縮まなかった場合(元 ≦ 保存後)は矢印を出さず保存後だけを返す
+ * (「210 KB → 240 KB」のような読み手が不安になる表示を作らない)。
+ */
+export function formatCompressionNote(sourceBytes: number, resultBytes: number): string {
+  const result = formatByteSize(resultBytes)
+  if (result === '—') return '—'
+  if (!Number.isFinite(sourceBytes) || sourceBytes <= resultBytes) return result
+  return `${formatByteSize(sourceBytes)} → ${result}`
+}
+
+/**
+ * 写真の保存容量サマリ(S-09 バックアップ): 「写真 3枚 ・ 約 620 KB」。
+ * 1枚も無いときは null(呼び出し側で「登録された写真はありません」等に差し替える)。
+ */
+export function formatPhotoSummary(count: number, totalBytes: number): string | null {
+  if (!Number.isFinite(count) || count <= 0) return null
+  return `写真 ${Math.round(count)}枚 ・ 約 ${formatByteSize(totalBytes)}`
+}
