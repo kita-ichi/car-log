@@ -23,6 +23,21 @@
   --r-md: 12px;
   --r-lg: 20px;
   --shadow: 0 1px 3px rgba(16, 30, 54, 0.08);
+
+  /* 車両写真(5.15)— 写真の上で使う色。写真の明暗はユーザー次第のため専用色に差し替える */
+  --c-hero-scrim: rgba(31, 43, 58, 0.78); /* この不透明度を下回らせない(5.15.3) */
+  --c-panel-sub-on-photo: #c9d6e4;
+  --c-trend-up-on-photo: #7fe7b6;
+  --c-trend-down-on-photo: #ffc2c9;
+  --c-photo-slot: #eef2f7;
+  /* 車両写真の寸法トークン(5.15.1) */
+  --ph-thumb: 44px;
+  --ph-thumb-r: var(--r-sm);
+  --ph-hero-ar: 16 / 7;
+  --ph-hero-min-h: 168px;
+  --ph-preview-r: var(--r-md);
+  --ph-badge: 18px;
+  --ph-fade: 150ms;
 }
 
 * {
@@ -752,6 +767,78 @@ body {
   background: var(--c-surface);
   color: var(--c-ink);
   box-shadow: var(--shadow);
+}
+
+/* ============ 車両写真(5.15) ============ */
+/* 到着したら150msでフェードイン(不透明度のみ。枠は動かさない) */
+.ph-img {
+  opacity: 0;
+  transition: opacity var(--ph-fade) ease-out;
+}
+.ph-img.on {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-img {
+    transition: none;
+  }
+}
+
+/* サムネイル(5.15.2)。写真の有無・ロード状態にかかわらずリード領域は44px固定 */
+.vthumb {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--ph-thumb);
+  height: var(--ph-thumb);
+  border-radius: var(--ph-thumb-r);
+  background: var(--c-photo-slot);
+  color: var(--c-sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vthumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+}
+/* 白い車体が白いカードに溶けないよう内枠を重ねる(画像の上に描く) */
+.vthumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(16, 30, 54, 0.1);
+  pointer-events: none;
+}
+/* サムネイルを持たない行(「+ 車両を追加」など)で文字の開始位置を揃えるための枠 */
+.thumb-space {
+  width: var(--ph-thumb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 車両タイプバッジ(写真ありの行で車/バイクの識別を担保する) */
+.vthumb .tbadge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  z-index: 1;
+  width: var(--ph-badge);
+  height: var(--ph-badge);
+  border-radius: 50%;
+  background: var(--c-panel);
+  color: #fff;
+  box-shadow: 0 0 0 1.5px #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ホーム(ヒーロー) */

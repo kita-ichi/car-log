@@ -21,7 +21,8 @@ import {
   VehicleIcon,
   WrenchIcon,
 } from './icons'
-import { fmtKm } from './format'
+import { VehiclePhotoThumb, useVehiclePhotoUrls } from './photo'
+import { fmtKm, vehicleTypeLabel } from './format'
 import type { ValidationIssue } from '../logic/validation'
 
 /* ============ アプリバー ============ */
@@ -147,6 +148,8 @@ export function VehicleSheet() {
   } = useApp()
   // 補足表示用: 各車両の最新給油記録(最新ODO)
   const [latestMap, setLatestMap] = useState<Map<string, FuelRecord>>(new Map())
+  // 行頭サムネイル(5.15.2)。**画像の取得を待ってシートを開かない**(開いてから差し込む)
+  const photoUrls = useVehiclePhotoUrls(vehicles, vehicleSheetOpen)
 
   useEffect(() => {
     if (!vehicleSheetOpen) return
@@ -197,8 +200,10 @@ export function VehicleSheet() {
             key={v.id}
             className={`vrow${v.id === selectedVehicle?.id ? ' on' : ''}`}
             onClick={() => void handleSelect(v)}
+            /* 5.15.5: タイプバッジが視覚のみの情報にならないよう車両タイプを含める */
+            aria-label={`${vehicleTypeLabel(v.vehicleType)} ${v.name} に切り替え`}
           >
-            <VehicleIcon type={v.vehicleType} size={24} />
+            <VehiclePhotoThumb vehicle={v} url={photoUrls.get(v.id)} loading="eager" />
             <span className="grow">
               {v.name}
               <br />
@@ -216,7 +221,10 @@ export function VehicleSheet() {
             navigate({ name: 'vehicles', openForm: true })
           }}
         >
-          <PlusIcon size={24} />
+          {/* 車両行と文字の開始位置を揃える(リード領域は44px固定) */}
+          <span className="thumb-space">
+            <PlusIcon size={24} />
+          </span>
           <span className="grow">車両を追加</span>
         </button>
       </div>

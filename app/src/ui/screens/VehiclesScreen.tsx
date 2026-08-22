@@ -11,7 +11,8 @@ import { validateVehicle } from '../../logic/validation'
 import { elapsedYearsMonths } from '../../logic/vehicleAge'
 import { useApp } from '../AppContext'
 import { ConfirmDialog, ModalAppBar } from '../components'
-import { BikeIcon, CarIcon, PlusIcon, VehicleIcon } from '../icons'
+import { BikeIcon, CarIcon, PlusIcon } from '../icons'
+import { VehiclePhotoThumb, useVehiclePhotoUrls } from '../photo'
 import { fmtKm, fmtYm, fuelTypeLabel, vehicleTypeLabel } from '../format'
 
 /** 一覧の補足表示「初度登録 2020年4月(5年3ヶ月)」。未設定は null(非表示) */
@@ -113,6 +114,9 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   const [archived, setArchived] = useState<Vehicle[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const formRef = useRef<HTMLDivElement>(null)
+  // 行頭サムネイル(5.15.2)。行ごとに getPhoto を呼ばず一括取得する
+  const photoUrls = useVehiclePhotoUrls(vehicles)
+  const archivedPhotoUrls = useVehiclePhotoUrls(archived, showArchived)
 
   useEffect(() => {
     if (editing !== null) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -255,9 +259,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
           <div className="list">
             {archived.map((v) => (
               <div key={v.id} className="row static">
-                <span style={{ color: 'var(--c-sub)', display: 'flex' }}>
-                  <VehicleIcon type={v.vehicleType} size={24} />
-                </span>
+                <VehiclePhotoThumb vehicle={v} url={archivedPhotoUrls.get(v.id)} />
                 <div className="grow">
                   <div style={{ fontWeight: 700 }}>{v.name}</div>
                   <div className="sub num">
@@ -307,11 +309,10 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                   <button
                     className="row-main"
                     onClick={() => void handleRowTap(v)}
-                    aria-label={`${v.name} に切り替え`}
+                    /* 5.15.5: タイプバッジが視覚のみの情報にならないよう車両タイプを含める */
+                    aria-label={`${vehicleTypeLabel(v.vehicleType)} ${v.name} に切り替え`}
                   >
-                    <span style={{ color: 'var(--c-sub)', display: 'flex' }}>
-                      <VehicleIcon type={v.vehicleType} size={24} />
-                    </span>
+                    <VehiclePhotoThumb vehicle={v} url={photoUrls.get(v.id)} />
                     <div className="grow">
                       <div style={{ fontWeight: 700 }}>
                         {v.name}{' '}
