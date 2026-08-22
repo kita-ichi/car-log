@@ -8,6 +8,8 @@ export {
   type VehicleInput,
   type VehicleUpdate,
   type VehicleRepository,
+  type VehiclePhotoInput,
+  type PhotoAssignment,
 } from './vehicleRepository'
 export {
   fuelRecordRepository,

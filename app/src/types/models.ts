@@ -58,8 +58,43 @@ export interface Vehicle extends BaseEntity {
   tankCapacity?: number
   /** 車検満了日 'YYYY-MM-DD' */
   inspectionExpiry?: string
+  /**
+   * 愛車の写真(F-22)の最終更新日時(ISO 8601)。
+   * **画像本体はここに持たない**(別テーブル `vehiclePhotos`。§ VehiclePhoto 参照)。
+   * - 値があること = 写真が設定されていること。未設定なら写真なし
+   * - 値が変わったら画像が差し替わったということ。UI の ObjectURL キャッシュの
+   *   無効化キーに使える(vehicleRepository が自動で維持する。手で書き換えない)
+   */
+  photoUpdatedAt?: string
   /** 手放した車両の非表示用(削除ではなくアーカイブ。記録は保持) */
   isArchived: boolean
+}
+
+/**
+ * 愛車の写真(F-22)。車両1台につき1枚、`vehicleId` を主キーに 1:1 で持つ。
+ *
+ * **Vehicle 本体と別テーブルにしている理由**:
+ * 車両一覧(`listActive()`)は画面表示のたびに全車両行を読むため、そこに数百KBの
+ * 画像を同居させると一覧のたびに全画像をメモリに載せることになる。写真は
+ * 「表示する画面が必要になったときだけ」`getPhoto()` で読む。
+ *
+ * 画像は保存前に長辺 1280px の JPEG へ縮小・再エンコード済み(logic/image.ts)。
+ */
+export interface VehiclePhoto {
+  /** 対象車両ID(主キー。Vehicle と 1:1) */
+  vehicleId: string
+  /** 画像本体。Dexie(IndexedDB)は Blob をそのまま保存できる */
+  blob: Blob
+  /** 画像の MIME タイプ(通常 'image/jpeg') */
+  mimeType: string
+  /** バイト数(blob.size と同じ。集計・表示用に非同期読み出し無しで使えるよう持つ) */
+  byteSize: number
+  /** 保存されている画像の幅(px)。取得できなかった場合は未設定 */
+  width?: number
+  /** 保存されている画像の高さ(px)。取得できなかった場合は未設定 */
+  height?: number
+  /** 設定・差し替えの日時(ISO 8601。Vehicle.photoUpdatedAt と一致する) */
+  updatedAt: string
 }
 
 /** 給油記録(§5.2) */

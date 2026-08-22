@@ -158,6 +158,164 @@ describe('vehicleRepository', () => {
   })
 })
 
+describe('vehicleRepository: 愛車の写真(F-22)', () => {
+  /** 中身が判別できるダミー画像(JPEG のシグネチャ + 任意のバイト列) */
+  const makePhoto = (marker: number, size = 64): Blob =>
+    new Blob([new Uint8Array([0xff, 0xd8, 0xff, marker, ...new Array<number>(size - 4).fill(marker)])], {
+      type: 'image/jpeg',
+    })
+
+  const readBytes = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
+
+  it('登録と同時に写真を設定でき、photoUpdatedAt が付く', async () => {
+    const { vehicles } = setup()
+    const photo = makePhoto(0x11)
+    const vehicle = await vehicles.create({ name: 'ノート', photo })
+
+    expect(vehicle.photoUpdatedAt).toBeTruthy()
+    const stored = await vehicles.getPhoto(vehicle.id)
+    expect(stored?.vehicleId).toBe(vehicle.id)
+    expect(stored?.mimeType).toBe('image/jpeg')
+    expect(stored?.byteSize).toBe(photo.size)
+    expect(stored?.updatedAt).toBe(vehicle.photoUpdatedAt)
+    expect(await readBytes(stored!.blob)).toEqual(await readBytes(photo))
+  })
+
+  it('写真なしで登録した車両は photoUpdatedAt キー自体を持たない', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート' })
+    expect(vehicle.photoUpdatedAt).toBeUndefined()
+    expect('photoUpdatedAt' in vehicle).toBe(false)
+    expect(await vehicles.getPhoto(vehicle.id)).toBeUndefined()
+  })
+
+  it('後から設定・差し替えができ、差し替えで photoUpdatedAt が変わる', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート' })
+
+    const first = await vehicles.setPhoto(vehicle.id, makePhoto(0x11))
+    expect(first.photoUpdatedAt).toBeTruthy()
+
+    const second = await vehicles.setPhoto(vehicle.id, makePhoto(0x22))
+    expect(second.photoUpdatedAt).not.toBe(first.photoUpdatedAt)
+
+    // 差し替え後は新しい画像だけが残る(1車両1枚)
+    const stored = await vehicles.getPhoto(vehicle.id)
+    expect((await readBytes(stored!.blob))[3]).toBe(0x22)
+    expect(await vehicles.listAllPhotos()).toHaveLength(1)
+  })
+
+  it('幅・高さ・MIMEタイプのメタ情報も保存できる(processVehiclePhoto の戻り値をそのまま渡す形)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート' })
+    await vehicles.setPhoto(vehicle.id, {
+      blob: makePhoto(0x33),
+      width: 1280,
+      height: 960,
+      mimeType: 'image/jpeg',
+    })
+    const stored = await vehicles.getPhoto(vehicle.id)
+    expect(stored?.width).toBe(1280)
+    expect(stored?.height).toBe(960)
+  })
+
+  it('update(id, { photo: null }) で写真が消える(update系の null=クリア契約)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+
+    const cleared = await vehicles.update(vehicle.id, { photo: null })
+    expect(cleared.photoUpdatedAt).toBeUndefined()
+    expect('photoUpdatedAt' in cleared).toBe(false)
+    expect(await vehicles.getPhoto(vehicle.id)).toBeUndefined()
+    expect(await vehicles.listAllPhotos()).toHaveLength(0)
+    // 車両自体は残る
+    expect((await vehicles.getById(vehicle.id))?.name).toBe('ノート')
+  })
+
+  it('removePhoto() も同じ結果になる', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    await vehicles.removePhoto(vehicle.id)
+    expect(await vehicles.getPhoto(vehicle.id)).toBeUndefined()
+    expect((await vehicles.getById(vehicle.id))?.photoUpdatedAt).toBeUndefined()
+  })
+
+  it('写真なしの車両に removePhoto しても壊れない', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート' })
+    await expect(vehicles.removePhoto(vehicle.id)).resolves.toBeTruthy()
+    expect(await vehicles.getPhoto(vehicle.id)).toBeUndefined()
+  })
+
+  it('photo を省略した update では写真も photoUpdatedAt も変わらない(undefined=変更なし)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    const renamed = await vehicles.update(vehicle.id, { name: 'ノート e-POWER' })
+
+    expect(renamed.photoUpdatedAt).toBe(vehicle.photoUpdatedAt)
+    expect((await vehicles.getPhoto(vehicle.id))?.byteSize).toBe(64)
+  })
+
+  it('車両一覧(listActive / listAll)は画像バイト列を含まない(一覧で全画像を読まない)', async () => {
+    const { vehicles } = setup()
+    await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    await vehicles.create({ name: 'MT-07', photo: makePhoto(0x22) })
+
+    for (const v of await vehicles.listActive()) {
+      expect(v.photoUpdatedAt).toBeTruthy() // 写真の有無は一覧だけで判定できる
+      expect(Object.values(v).some((value) => value instanceof Blob)).toBe(false)
+    }
+    expect((await vehicles.listAll()).some((v) => 'blob' in v)).toBe(false)
+  })
+
+  it('アーカイブしても写真は保持される', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    await vehicles.archive(vehicle.id)
+    expect((await vehicles.getById(vehicle.id))?.photoUpdatedAt).toBeTruthy()
+    expect(await vehicles.getPhoto(vehicle.id)).toBeDefined()
+  })
+
+  it('写真は車両ごとに独立している', async () => {
+    const { vehicles } = setup()
+    const car = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    const bike = await vehicles.create({ name: 'MT-07', photo: makePhoto(0x22) })
+
+    await vehicles.removePhoto(car.id)
+    expect(await vehicles.getPhoto(car.id)).toBeUndefined()
+    expect((await readBytes((await vehicles.getPhoto(bike.id))!.blob))[3]).toBe(0x22)
+  })
+
+  it('getPhotoStorageSummary で枚数と合計バイト数が取れる', async () => {
+    const { vehicles } = setup()
+    expect(await vehicles.getPhotoStorageSummary()).toEqual({ count: 0, totalBytes: 0 })
+
+    await vehicles.create({ name: 'ノート', photo: makePhoto(0x11, 100) })
+    await vehicles.create({ name: 'MT-07', photo: makePhoto(0x22, 200) })
+    expect(await vehicles.getPhotoStorageSummary()).toEqual({ count: 2, totalBytes: 300 })
+  })
+
+  it('空の Blob・Blob以外は保存前に弾かれ、車両も作られない', async () => {
+    const { vehicles, database } = setup()
+    await expect(
+      vehicles.create({ name: 'ノート', photo: new Blob([], { type: 'image/jpeg' }) }),
+    ).rejects.toThrow(/空/)
+    expect(await database.vehicles.count()).toBe(0)
+
+    const vehicle = await vehicles.create({ name: 'ノート' })
+    await expect(
+      vehicles.setPhoto(vehicle.id, { blob: 'not-a-blob' as unknown as Blob }),
+    ).rejects.toThrow(/Blob/)
+    expect((await vehicles.getById(vehicle.id))?.photoUpdatedAt).toBeUndefined()
+  })
+
+  it('存在しない車両への写真設定はエラーになり、写真も残らない', async () => {
+    const { vehicles } = setup()
+    await expect(vehicles.setPhoto('missing', makePhoto(0x11))).rejects.toThrow(/見つかりません/)
+    expect(await vehicles.listAllPhotos()).toHaveLength(0)
+  })
+})
+
 describe('fuelRecordRepository', () => {
   it('総額入力時は単価が自動算出されて保存される', async () => {
     const { fuelRecords } = setup()
