@@ -142,7 +142,9 @@ function toPhotoRecord(
 }
 
 export function createVehicleRepository(database: AppDatabase) {
-  return {
+  // 内部で他のメソッドを呼ぶ箇所があるため this ではなく変数経由で参照する
+  // (`const { setPhoto } = vehicleRepository` のように取り出しても壊れないように)
+  const repository = {
     /** 車両を登録して登録後のエンティティを返す */
     async create(input: VehicleInput): Promise<Vehicle> {
       assertVehicleValues(input)
@@ -247,12 +249,12 @@ export function createVehicleRepository(database: AppDatabase) {
 
     /** 写真を設定・差し替える(既存があれば上書き)。更新後の車両を返す */
     async setPhoto(vehicleId: string, photo: Blob | VehiclePhotoInput): Promise<Vehicle> {
-      return this.update(vehicleId, { photo })
+      return repository.update(vehicleId, { photo })
     },
 
     /** 写真を削除する(車両は残る)。更新後の車両を返す */
     async removePhoto(vehicleId: string): Promise<Vehicle> {
-      return this.update(vehicleId, { photo: null })
+      return repository.update(vehicleId, { photo: null })
     },
 
     /** 全車両の写真(エクスポート用・F-11)。車両IDの昇順 */
@@ -277,14 +279,15 @@ export function createVehicleRepository(database: AppDatabase) {
 
     /** 手放した車両を非表示にする(記録・写真は保持・復元可能) */
     async archive(id: string): Promise<void> {
-      await this.update(id, { isArchived: true })
+      await repository.update(id, { isArchived: true })
     },
 
     /** アーカイブを解除する */
     async unarchive(id: string): Promise<void> {
-      await this.update(id, { isArchived: false })
+      await repository.update(id, { isArchived: false })
     },
   }
+  return repository
 }
 
 export type VehicleRepository = ReturnType<typeof createVehicleRepository>
