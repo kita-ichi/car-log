@@ -12,7 +12,12 @@ import { elapsedYearsMonths } from '../../logic/vehicleAge'
 import { useApp } from '../AppContext'
 import { ConfirmDialog, ModalAppBar } from '../components'
 import { BikeIcon, CarIcon, PlusIcon } from '../icons'
-import { VehiclePhotoThumb, useVehiclePhotoUrls } from '../photo'
+import {
+  VehiclePhotoField,
+  VehiclePhotoThumb,
+  useStagedVehiclePhoto,
+  useVehiclePhotoUrls,
+} from '../photo'
 import { fmtKm, fmtYm, fuelTypeLabel, vehicleTypeLabel } from '../format'
 
 /** 一覧の補足表示「初度登録 2020年4月(5年3ヶ月)」。未設定は null(非表示) */
@@ -109,6 +114,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   )
   const [form, setForm] = useState<FormState>(emptyForm())
   const [confirmArchive, setConfirmArchive] = useState(false)
+  const [confirmPhotoDelete, setConfirmPhotoDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   /** アーカイブ済み車両(B-1: 復元導線)。折りたたみ表示 */
   const [archived, setArchived] = useState<Vehicle[]>([])
@@ -117,6 +123,8 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   // 行頭サムネイル(5.15.2)。行ごとに getPhoto を呼ばず一括取得する
   const photoUrls = useVehiclePhotoUrls(vehicles)
   const archivedPhotoUrls = useVehiclePhotoUrls(archived, showArchived)
+  // フォームの写真(5.15.4)。選んだ写真は「保存する」で確定する(staged)
+  const photo = useStagedVehiclePhoto(editing)
 
   useEffect(() => {
     if (editing !== null) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -159,7 +167,8 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
     initialOdo: form.initialOdo.trim() === '' ? null : odoValue,
     tankCapacity: form.tankCapacity.trim() === '' ? null : Number(form.tankCapacity),
   })
-  const canSave = result.canSave && !saving
+  // 写真の処理中は保存させない(処理が終わってから確定する)
+  const canSave = result.canSave && !saving && !photo.processing
 
   const handleSave = async () => {
     if (!canSave || editing === null) return
@@ -179,6 +188,8 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
         fuelType: form.fuelType,
         tankCapacity: form.tankCapacity !== '' ? Number(form.tankCapacity) : null,
         inspectionExpiry: form.inspectionExpiry || null,
+        // 写真(F-22): Blob=設定・null=削除・undefined=変更なし
+        photo: photo.photoPatch,
       }
       const wasOnboarding = isOnboarding
       let saved: Vehicle
@@ -196,7 +207,13 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
       if (wasOnboarding) navigate({ name: 'home' }) // 初回登録後はホームへ
     } catch (err) {
       console.error('車両の保存に失敗:', err)
-      showToast('保存に失敗しました。もう一度お試しください')
+      // 写真つきの保存で容量オーバーになった場合は原因が分かる文言にする(入力内容は保持)
+      const detail = `${(err as Error)?.name ?? ''} ${(err as Error)?.message ?? ''}`
+      showToast(
+        photo.photoPatch && /quota|space|storage/i.test(detail)
+          ? '写真を保存できませんでした(端末の空き容量をご確認ください)'
+          : '保存に失敗しました。もう一度お試しください',
+      )
     } finally {
       setSaving(false)
     }
@@ -259,7 +276,11 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
           <div className="list">
             {archived.map((v) => (
               <div key={v.id} className="row static">
-                <VehiclePhotoThumb vehicle={v} url={archivedPhotoUrls.get(v.id)} />
+                <VehiclePhotoThumb
+                  type={v.vehicleType}
+                  hasPhoto={v.photoUpdatedAt !== undefined}
+                  url={archivedPhotoUrls.get(v.id)}
+                />
                 <div className="grow">
                   <div style={{ fontWeight: 700 }}>{v.name}</div>
                   <div className="sub num">
@@ -312,7 +333,11 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                     /* 5.15.5: タイプバッジが視覚のみの情報にならないよう車両タイプを含める */
                     aria-label={`${vehicleTypeLabel(v.vehicleType)} ${v.name} に切り替え`}
                   >
-                    <VehiclePhotoThumb vehicle={v} url={photoUrls.get(v.id)} />
+                    <VehiclePhotoThumb
+                      type={v.vehicleType}
+                      hasPhoto={v.photoUpdatedAt !== undefined}
+                      url={photoUrls.get(v.id)}
+                    />
                     <div className="grow">
                       <div style={{ fontWeight: 700 }}>
                         {v.name}{' '}
@@ -395,6 +420,14 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                 onChange={(e) => set('name', e.target.value)}
               />
             </div>
+
+            {/* 車両の写真: 必須2項目の直下(任意項目群の先頭)。保存で確定する */}
+            <VehiclePhotoField
+              photo={photo}
+              vehicleType={form.vehicleType}
+              isNew={editing === 'new'}
+              onRequestRemove={() => setConfirmPhotoDelete(true)}
+            />
 
             <div className="field">
               <label htmlFor="v-maker">
@@ -549,6 +582,18 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmPhotoDelete}
+        title="写真を削除しますか?"
+        body="保存すると反映されます。給油・メンテの記録は削除されません。"
+        confirmLabel="削除"
+        onConfirm={() => {
+          photo.removePhoto()
+          setConfirmPhotoDelete(false)
+        }}
+        onCancel={() => setConfirmPhotoDelete(false)}
+      />
 
       <ConfirmDialog
         open={confirmArchive}

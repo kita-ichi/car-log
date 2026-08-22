@@ -771,15 +771,15 @@ body {
 
 /* ============ 車両写真(5.15) ============ */
 /* 到着したら150msでフェードイン(不透明度のみ。枠は動かさない) */
-.ph-img {
+.ph-fade {
   opacity: 0;
   transition: opacity var(--ph-fade) ease-out;
 }
-.ph-img.on {
+.ph-fade.on {
   opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ph-img {
+  .ph-fade {
     transition: none;
   }
 }
@@ -841,12 +841,231 @@ body {
   justify-content: center;
 }
 
+/* 写真ピッカー(5.15.4 / S-08 車両編集フォーム) */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.photo-field .cap {
+  font-size: 12px;
+  color: var(--c-sub);
+  margin-top: 4px;
+}
+/* 未設定・エラー: 16:7の破線枠。**枠全体がタップ領域**(1タップでOSの選択シート) */
+.photo-slot {
+  appearance: none;
+  font-family: inherit;
+  width: 100%;
+  margin-top: 6px;
+  aspect-ratio: var(--ph-hero-ar);
+  border: 1px dashed #c7d1dc;
+  border-radius: var(--ph-preview-r);
+  background: var(--c-photo-slot);
+  color: var(--c-primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.photo-slot .t {
+  font-size: 15px;
+  font-weight: 700;
+}
+.photo-slot:disabled {
+  cursor: default;
+  color: var(--c-sub);
+}
+.photo-slot.err {
+  background: var(--c-warn-bg);
+  border-style: solid;
+  border-color: #e5c98d;
+  color: var(--c-primary);
+}
+.photo-slot .err-msg {
+  color: var(--c-warn-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+/* 設定済み: ホームでの見え方(実際のスクリムを適用したプレビュー) */
+.photo-hero {
+  position: relative;
+  margin-top: 6px;
+  aspect-ratio: var(--ph-hero-ar);
+  border-radius: var(--ph-preview-r);
+  overflow: hidden;
+  background: var(--c-panel);
+}
+.photo-hero img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.photo-hero .scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--c-hero-scrim);
+}
+.photo-hero .demo {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  text-shadow: 0 1px 2px rgba(11, 18, 26, 0.55);
+}
+.photo-hero .demo .lbl {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--c-panel-sub-on-photo);
+}
+.photo-hero .demo .big {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+}
+.photo-hero .demo .big small {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-panel-sub-on-photo);
+  margin-left: 4px;
+}
+.photo-hero .busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(31, 43, 58, 0.62);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.photo-thumbrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.photo-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.photo-acts .btn {
+  min-height: 44px;
+  font-size: 15px;
+  border-radius: var(--r-md);
+}
+.photo-acts .btn.secondary {
+  flex: 1;
+}
+.photo-acts .btn.danger-text {
+  width: auto;
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+/* スピナー(写真の処理中。150ms を超えたときだけ出す) */
+.spinner {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(29, 91, 191, 0.25);
+  border-top-color: var(--c-primary);
+  animation: spin 0.8s linear infinite;
+}
+.spinner.light {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
 /* ホーム(ヒーロー) */
 .hero {
+  position: relative;
   background: var(--c-panel);
   color: #fff;
   padding: 8px 20px 24px;
   border-radius: 0 0 24px 24px;
+}
+/* 写真あり(5.15.3): 高さを確保してテキストを下寄せ。上側に写真の抜けを作る。
+   高さは photoUpdatedAt(=写真の有無)で決め、読み込みの前後で枠を動かさない */
+.hero.has-photo {
+  min-height: var(--ph-hero-min-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.hero .hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.hero .hero-bg img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+/* スクリム(暗幕): 全面に均一。合成後の不透明度を .78 未満にしない(5.15.3) */
+.hero .hero-bg .scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--c-hero-scrim);
+}
+.hero .lbl,
+.hero .big,
+.hero .meta {
+  position: relative;
+  z-index: 1;
+}
+/* 写真の上のテキスト色(§2「車両写真の上で使う色」)。text-shadow はあくまで保険で、
+   コントラスト比の担保はスクリムの不透明度で行う */
+.hero.photo-ready .lbl,
+.hero.photo-ready .meta,
+.hero.photo-ready .big small {
+  color: var(--c-panel-sub-on-photo);
+}
+.hero.photo-ready .lbl,
+.hero.photo-ready .big,
+.hero.photo-ready .meta {
+  text-shadow: 0 1px 2px rgba(11, 18, 26, 0.55);
+}
+.hero.photo-ready .trend-up {
+  color: var(--c-trend-up-on-photo) !important;
+}
+.hero.photo-ready .trend-down {
+  color: var(--c-trend-down-on-photo) !important;
 }
 .hero .lbl {
   font-size: 12px;

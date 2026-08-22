@@ -12,6 +12,7 @@ import { calculateFuelStats, calculateMonthlyFuelCost } from '../../logic/fuelEc
 import { useApp } from '../AppContext'
 import { ListAppBar } from '../components'
 import { FuelIcon, WrenchIcon } from '../icons'
+import { usePhotoLoadState, useVehiclePhoto } from '../photo'
 import {
   fmtDateFull,
   fmtEconomy,
@@ -96,11 +97,24 @@ export function HomeScreen() {
 
   const sparkValues = confirmed.slice(-12).map((r) => r.fuelEconomy!)
 
+  // 愛車の写真をヒーロー背景に敷く(5.15.3)。読み込み前・失敗時は無地ネイビー(無言でフォールバック)
+  const { url: photoUrl } = useVehiclePhoto(selectedVehicle)
+  const { shown: photoShown, failed: photoFailed, imgProps } = usePhotoLoadState(photoUrl)
+  const hasPhoto = selectedVehicle?.photoUpdatedAt !== undefined && !photoFailed
+
   return (
     <section className="screen">
       <ListAppBar right={<span className="sub-title num">{todayLabel()}</span>} />
 
-      <div className="hero">
+      <div
+        className={`hero${hasPhoto ? ' has-photo' : ''}${photoShown ? ' photo-ready' : ''}`}
+      >
+        {photoUrl && !photoFailed && (
+          <div className={`hero-bg ph-fade${photoShown ? ' on' : ''}`} aria-hidden="true">
+            <img src={photoUrl} alt="" {...imgProps} />
+            <span className="scrim" />
+          </div>
+        )}
         <div className="lbl">直近の燃費</div>
         <div className="big num">
           {fmtEconomy(recent)}

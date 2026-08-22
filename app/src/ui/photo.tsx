@@ -10,11 +10,17 @@
  * - 作った ObjectURL は必ず解放する(useEffect のクリーンアップ)
  * - 読み込み失敗は**無言でフォールバック**(タイプアイコン / 無地ネイビー)
  */
-import { useEffect, useMemo, useState } from 'react'
-import type { Vehicle, VehiclePhoto } from '../types/models'
-import { vehicleRepository } from '../db/repositories'
-import { createPhotoObjectUrl, revokePhotoObjectUrl } from './imageProcessing'
-import { VehicleIcon } from './icons'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Vehicle, VehiclePhoto, VehicleType } from '../types/models'
+import { vehicleRepository, type PhotoAssignment } from '../db/repositories'
+import { ImageError, formatByteSize, formatCompressionNote } from '../logic/image'
+import {
+  createPhotoObjectUrl,
+  processVehiclePhoto,
+  revokePhotoObjectUrl,
+  type ProcessedImage,
+} from './imageProcessing'
+import { PhotoIcon, VehicleIcon } from './icons'
 
 /* ============ 読み込みフック ============ */
 
@@ -148,18 +154,21 @@ export function usePhotoLoadState(url: string | null | undefined): {
  * 装飾のため `aria-hidden`(車両名テキスト・行の aria-label が情報を担う)。
  */
 export function VehiclePhotoThumb({
-  vehicle,
+  type,
+  hasPhoto,
   url,
   loading = 'lazy',
 }: {
-  vehicle: Vehicle
+  type: VehicleType
+  /** 写真が設定されているか(`vehicle.photoUpdatedAt !== undefined`) */
+  hasPhoto: boolean
   url?: string | null
   /** 一覧は lazy、シート内は eager(開いた瞬間に見える必要がある) */
   loading?: 'lazy' | 'eager'
 }) {
   const { shown, failed, imgProps } = usePhotoLoadState(url)
   // 写真があるはずだがまだ届いていない = 無地のスロット(アイコンを出すとチラつく)
-  const pending = vehicle.photoUpdatedAt !== undefined && !shown && !failed
+  const pending = hasPhoto && !shown && !failed
 
   return (
     <span className="vthumb" aria-hidden="true">
@@ -168,17 +177,248 @@ export function VehiclePhotoThumb({
           src={url}
           alt=""
           loading={loading}
-          className={`ph-img${shown ? ' on' : ''}`}
+          className={`ph-fade${shown ? ' on' : ''}`}
           {...imgProps}
         />
       )}
       {shown ? (
         <span className="tbadge">
-          <VehicleIcon type={vehicle.vehicleType} size={12} />
+          <VehicleIcon type={type} size={12} />
         </span>
       ) : (
-        !pending && <VehicleIcon type={vehicle.vehicleType} size={24} />
+        !pending && <VehicleIcon type={type} size={24} />
       )}
     </span>
+  )
+}
+
+/* ============ 写真ピッカー(5.15.4 / S-08 車両編集フォーム) ============ */
+
+/** フォーム内で保留(staged)している写真の操作。「保存する」まで DB には書かない */
+type StagedPhoto =
+  | { kind: 'keep' } // 変更なし(既存写真をそのまま)
+  | { kind: 'set'; processed: ProcessedImage; url: string } // 新しく選んだ写真
+  | { kind: 'remove' } // 削除(保存時に反映)
+
+export interface StagedVehiclePhoto {
+  /** プレビューに出す画像URL。未設定・削除予定なら null */
+  previewUrl: string | null
+  /** 既存写真の読み込み中(枠は出すが中身がまだ無い状態) */
+  loadingExisting: boolean
+  /** 「3.4 MB → 210 KB」/ 既存写真は保存サイズのみ */
+  sizeNote: string | null
+  processing: boolean
+  /** 150ms を超えて処理が続いているか(ちらつき防止でそれまではスピナーを出さない) */
+  showSpinner: boolean
+  /** 取り込み失敗のメッセージ(ダイアログは出さず枠内に表示する) */
+  error: string | null
+  pickFile: (file: File) => Promise<void>
+  /** 削除を予約する(確認ダイアログでOKされた後に呼ぶ) */
+  removePhoto: () => void
+  /** 保存時に vehicleRepository へ渡す値(undefined=変更なし / null=削除) */
+  photoPatch: PhotoAssignment | undefined
+}
+
+/**
+ * 車両編集フォームの写真を staged(保存で確定)で扱うフック。
+ * 追加・変更・削除はフォームの他項目と同じく「保存する」で確定し、キャンセルで元に戻る。
+ *
+ * @param target フォームの対象('new' = 新規登録 / Vehicle = 編集 / null = フォーム非表示)
+ */
+export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVehiclePhoto {
+  const vehicle = target !== null && target !== 'new' ? target : null
+  const existing = useVehiclePhoto(vehicle)
+  const [staged, setStaged] = useState<StagedPhoto>({ kind: 'keep' })
+  const [processing, setProcessing] = useState(false)
+  const [showSpinner, setShowSpinner] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const stagedUrlRef = useRef<string | null>(null)
+
+  /** 保留中の写真を差し替える(前の ObjectURL は必ず解放する) */
+  const replaceStaged = useCallback((next: StagedPhoto) => {
+    revokePhotoObjectUrl(stagedUrlRef.current)
+    stagedUrlRef.current = next.kind === 'set' ? next.url : null
+    setStaged(next)
+  }, [])
+
+  // フォームを開き直したら(別の車両・新規登録)選択内容を破棄する
+  const formKey = target === null ? '' : target === 'new' ? 'new' : target.id
+  useEffect(() => {
+    replaceStaged({ kind: 'keep' })
+    setError(null)
+  }, [formKey, replaceStaged])
+
+  // アンマウント時に保留中の ObjectURL を解放する
+  useEffect(() => () => revokePhotoObjectUrl(stagedUrlRef.current), [])
+
+  const pickFile = useCallback(
+    async (file: File) => {
+      setError(null)
+      setProcessing(true)
+      // 150ms 未満で終わる場合はスピナーを出さない(ちらつき防止)
+      const timer = setTimeout(() => setShowSpinner(true), 150)
+      try {
+        const processed = await processVehiclePhoto(file)
+        replaceStaged({ kind: 'set', processed, url: createPhotoObjectUrl(processed) })
+      } catch (err) {
+        console.error('写真の取り込みに失敗:', err)
+        setError(
+          err instanceof ImageError
+            ? err.message
+            : 'この写真は読み込めませんでした。別の写真を選んでください',
+        )
+      } finally {
+        clearTimeout(timer)
+        setProcessing(false)
+        setShowSpinner(false)
+      }
+    },
+    [replaceStaged],
+  )
+
+  const removePhoto = useCallback(() => {
+    replaceStaged({ kind: 'remove' })
+    setError(null)
+  }, [replaceStaged])
+
+  const previewUrl =
+    staged.kind === 'set' ? staged.url : staged.kind === 'remove' ? null : existing.url
+
+  const sizeNote =
+    staged.kind === 'set'
+      ? formatCompressionNote(staged.processed.sourceByteSize, staged.processed.byteSize)
+      : staged.kind === 'keep' && existing.photo
+        ? formatByteSize(existing.photo.byteSize)
+        : null
+
+  return {
+    previewUrl,
+    loadingExisting:
+      staged.kind === 'keep' && vehicle?.photoUpdatedAt !== undefined && existing.url === null,
+    sizeNote,
+    processing,
+    showSpinner,
+    error,
+    pickFile,
+    removePhoto,
+    photoPatch:
+      staged.kind === 'set' ? staged.processed : staged.kind === 'remove' ? null : undefined,
+  }
+}
+
+/**
+ * 写真ピッカー(5.15.4)。車両名の直下=任意項目の先頭に置く。
+ *
+ * - 未設定: 16:7の破線枠。**枠全体がタップ領域**で1タップ。`capture` は付けない
+ *   (撮影・アルバムのどちらからでも選べるようにする)
+ * - 設定済み: スクリム適用済みのヒーロープレビュー(ホームでの見え方)+ 44pxサムネプレビュー
+ * - エラー: ダイアログを出さず枠内にアンバー表示(選び直しのみ)
+ */
+export function VehiclePhotoField({
+  photo,
+  vehicleType,
+  isNew,
+  onRequestRemove,
+}: {
+  photo: StagedVehiclePhoto
+  vehicleType: VehicleType
+  isNew: boolean
+  /** 「写真を削除」タップ(確認ダイアログは呼び出し側で出す) */
+  onRequestRemove: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { previewUrl, processing, showSpinner, error } = photo
+  const busy = processing && showSpinner
+
+  const openPicker = () => inputRef.current?.click()
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // 同じファイルを選び直せるように入力値をクリアしておく
+    e.target.value = ''
+    if (file) void photo.pickFile(file)
+  }
+
+  return (
+    <div className="field photo-field">
+      <label htmlFor="v-photo">
+        車両の写真 <span className="opt">任意</span>
+      </label>
+
+      <input
+        id="v-photo"
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="visually-hidden"
+        onChange={handleChange}
+        disabled={processing}
+      />
+
+      {previewUrl ? (
+        <>
+          {/* ホームでの見え方: 実際のスクリムを適用して「暗く出る」ことを事前に伝える */}
+          <div className="photo-hero">
+            <img src={previewUrl} alt="登録した写真のプレビュー" decoding="async" />
+            <span className="scrim" />
+            <span className="demo">
+              <span className="lbl">直近の燃費</span>
+              <span className="big num">
+                19.2<small>km/L</small>
+              </span>
+            </span>
+            {busy && (
+              <span className="busy">
+                <span className="spinner light" aria-hidden="true" />
+                写真を準備しています…
+              </span>
+            )}
+          </div>
+          <div className="cap">ホームでの見え方(数値は例)</div>
+
+          {/* 一覧・切り替えでの見え方 */}
+          <div className="photo-thumbrow">
+            <VehiclePhotoThumb type={vehicleType} hasPhoto url={previewUrl} loading="eager" />
+            <span className="cap">一覧・切り替えでの見え方</span>
+          </div>
+
+          <div className="photo-acts">
+            <button type="button" className="btn secondary sm" onClick={openPicker} disabled={processing}>
+              写真を変更
+            </button>
+            <button type="button" className="btn danger-text sm" onClick={onRequestRemove} disabled={processing}>
+              写真を削除
+            </button>
+          </div>
+          {photo.sizeNote && <div className="hint num">保存サイズ {photo.sizeNote}</div>}
+          {error && <div className="warnchip">{error}</div>}
+        </>
+      ) : (
+        /* 枠全体がタップ領域(1タップでOSの選択シート) */
+        <button
+          type="button"
+          className={`photo-slot${error ? ' err' : ''}`}
+          onClick={openPicker}
+          disabled={processing}
+        >
+          {busy ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              <span className="t">写真を準備しています…</span>
+            </>
+          ) : photo.loadingExisting ? null : (
+            <>
+              <PhotoIcon size={24} />
+              <span className="t">写真を選ぶ</span>
+              {error && <span className="err-msg">{error}</span>}
+            </>
+          )}
+        </button>
+      )}
+
+      <div className="hint">
+        撮影・アルバムのどちらからでも選べます{isNew ? '(あとから設定できます)' : ''}
+      </div>
+    </div>
   )
 }

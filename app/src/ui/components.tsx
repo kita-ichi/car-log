@@ -203,7 +203,12 @@ export function VehicleSheet() {
             /* 5.15.5: タイプバッジが視覚のみの情報にならないよう車両タイプを含める */
             aria-label={`${vehicleTypeLabel(v.vehicleType)} ${v.name} に切り替え`}
           >
-            <VehiclePhotoThumb vehicle={v} url={photoUrls.get(v.id)} loading="eager" />
+            <VehiclePhotoThumb
+              type={v.vehicleType}
+              hasPhoto={v.photoUpdatedAt !== undefined}
+              url={photoUrls.get(v.id)}
+              loading="eager"
+            />
             <span className="grow">
               {v.name}
               <br />
