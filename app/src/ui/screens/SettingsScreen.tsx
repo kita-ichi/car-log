@@ -8,7 +8,8 @@
 import { useEffect, useState } from 'react'
 import { exportService, type ExportPayload } from '../../db/exportService'
 import { localDateString } from '../../logic/export'
-import { settingsRepository } from '../../db/repositories'
+import { formatPhotoSummary } from '../../logic/image'
+import { settingsRepository, vehicleRepository } from '../../db/repositories'
 import { useApp } from '../AppContext'
 import { downloadTextFile } from '../download'
 import { fmtDateFull } from '../format'
@@ -35,6 +36,12 @@ export function SettingsScreen() {
   const { vehicles, selectedVehicle, navigate, showToast } = useApp()
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  /** JSONバックアップに愛車の写真(F-22)を含めるか。既定ON */
+  const [includePhotos, setIncludePhotos] = useState(true)
+  /** 写真の枚数・合計サイズ(画像バイト列は読まない) */
+  const [photoSummary, setPhotoSummary] = useState<{ count: number; totalBytes: number } | null>(
+    null,
+  )
 
   // 最終バックアップ日時の復元(表示用)
   useEffect(() => {
@@ -43,6 +50,18 @@ export function SettingsScreen() {
       .then(setLastBackupAt)
       .catch((err) => console.error('最終バックアップ日時の読込に失敗:', err))
   }, [])
+
+  // 写真の容量サマリ(「写真 3枚 ・ 約 620 KB」)
+  useEffect(() => {
+    vehicleRepository
+      .getPhotoStorageSummary()
+      .then(setPhotoSummary)
+      .catch((err) => console.error('写真の容量集計に失敗:', err))
+  }, [])
+
+  const photoCount = photoSummary?.count ?? 0
+  const photoLabel =
+    formatPhotoSummary(photoCount, photoSummary?.totalBytes ?? 0) ?? '登録された写真はありません'
 
   /** エクスポート共通フロー: 生成 → ダウンロード → トースト(失敗時はエラートースト) */
   const runExport = async (
@@ -100,12 +119,31 @@ export function SettingsScreen() {
               disabled={exporting}
               onClick={() =>
                 void runExport(
-                  () => exportService.exportBackupJson(),
-                  'JSONバックアップを書き出しました',
+                  () => exportService.exportBackupJson(new Date(), { includePhotos }),
+                  includePhotos && photoCount > 0
+                    ? `JSONバックアップを書き出しました(写真${photoCount}枚を含む)`
+                    : 'JSONバックアップを書き出しました',
                   true,
                 )
               }
             />
+            {/* 愛車の写真(F-22)をバックアップに含めるか。OFF にすると軽いファイルになる */}
+            <div className="row static">
+              <div className="grow">
+                <div style={{ fontWeight: 700 }}>写真を含める</div>
+                <div className="sub num">{photoLabel}</div>
+              </div>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  checked={includePhotos && photoCount > 0}
+                  disabled={photoCount === 0}
+                  onChange={(e) => setIncludePhotos(e.target.checked)}
+                  aria-label="JSONバックアップに写真を含める"
+                />
+                <span className="knob" />
+              </span>
+            </div>
             <ExportRow
               title="給油記録CSV"
               sub="表計算ソフトで開ける形式(全車両)"

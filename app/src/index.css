@@ -648,6 +648,12 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: left 0.15s;
 }
+.switch input:disabled {
+  cursor: default;
+}
+.switch input:disabled + .knob {
+  opacity: 0.5;
+}
 .switch input:checked + .knob {
   background: var(--c-success);
 }
@@ -970,7 +976,8 @@ body {
   margin-top: 12px;
 }
 .photo-acts .btn {
-  min-height: 44px;
+  /* 最小タップ領域48px(デザインガイド §4 タッチターゲット) */
+  min-height: 48px;
   font-size: 15px;
   border-radius: var(--r-md);
 }

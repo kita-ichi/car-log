@@ -329,6 +329,10 @@ export function VehiclePhotoField({
   const inputRef = useRef<HTMLInputElement>(null)
   const { previewUrl, processing, showSpinner, error } = photo
   const busy = processing && showSpinner
+  // 保存済みの写真が壊れている場合、**この画面でだけ**明示する(一覧・ホームは無言でフォールバック)
+  const { failed: previewFailed, imgProps } = usePhotoLoadState(previewUrl)
+  const displayError =
+    error ?? (previewFailed ? '写真を読み込めませんでした。選び直してください' : null)
 
   const openPicker = () => inputRef.current?.click()
 
@@ -355,11 +359,11 @@ export function VehiclePhotoField({
         disabled={processing}
       />
 
-      {previewUrl ? (
+      {previewUrl && !previewFailed ? (
         <>
           {/* ホームでの見え方: 実際のスクリムを適用して「暗く出る」ことを事前に伝える */}
           <div className="photo-hero">
-            <img src={previewUrl} alt="登録した写真のプレビュー" decoding="async" />
+            <img src={previewUrl} alt="登録した写真のプレビュー" {...imgProps} />
             <span className="scrim" />
             <span className="demo">
               <span className="lbl">直近の燃費</span>
@@ -397,7 +401,7 @@ export function VehiclePhotoField({
         /* 枠全体がタップ領域(1タップでOSの選択シート) */
         <button
           type="button"
-          className={`photo-slot${error ? ' err' : ''}`}
+          className={`photo-slot${displayError ? ' err' : ''}`}
           onClick={openPicker}
           disabled={processing}
         >
@@ -410,7 +414,7 @@ export function VehiclePhotoField({
             <>
               <PhotoIcon size={24} />
               <span className="t">写真を選ぶ</span>
-              {error && <span className="err-msg">{error}</span>}
+              {displayError && <span className="err-msg">{displayError}</span>}
             </>
           )}
         </button>
