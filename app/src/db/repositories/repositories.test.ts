@@ -286,6 +286,21 @@ describe('vehicleRepository: 愛車の写真(F-22)', () => {
     expect((await readBytes((await vehicles.getPhoto(bike.id))!.blob))[3]).toBe(0x22)
   })
 
+  it('getPhotos で複数車両の写真をまとめて取得できる(写真なしは結果に含まれない)', async () => {
+    const { vehicles } = setup()
+    const car = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+    const bike = await vehicles.create({ name: 'MT-07', photo: makePhoto(0x22) })
+    const noPhoto = await vehicles.create({ name: 'ジムニー' })
+
+    const photos = await vehicles.getPhotos([car.id, bike.id, noPhoto.id, 'missing'])
+    expect(photos.size).toBe(2)
+    expect((await readBytes(photos.get(car.id)!.blob))[3]).toBe(0x11)
+    expect((await readBytes(photos.get(bike.id)!.blob))[3]).toBe(0x22)
+    expect(photos.has(noPhoto.id)).toBe(false)
+
+    expect((await vehicles.getPhotos([])).size).toBe(0)
+  })
+
   it('getPhotoStorageSummary で枚数と合計バイト数が取れる', async () => {
     const { vehicles } = setup()
     expect(await vehicles.getPhotoStorageSummary()).toEqual({ count: 0, totalBytes: 0 })

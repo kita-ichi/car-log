@@ -240,11 +240,26 @@ export function createVehicleRepository(database: AppDatabase) {
 
     /**
      * 車両の写真を取得する(未設定なら undefined)。
-     * **画像を表示する画面でだけ呼ぶこと** — 一覧では `vehicle.photoUpdatedAt` の
-     * 有無で写真あり/なしを判定できるので、この呼び出しは不要。
+     * **画像を表示するときだけ呼ぶこと** — 写真の有無だけなら
+     * `vehicle.photoUpdatedAt` で判定できるので、この呼び出しは不要。
      */
     async getPhoto(vehicleId: string): Promise<VehiclePhoto | undefined> {
       return database.vehiclePhotos.get(vehicleId)
+    },
+
+    /**
+     * 複数車両の写真をまとめて取得する(S-08 の一覧サムネイル・S-11 の切り替えシート用)。
+     * 写真が無い車両はキーごと結果に含まれない。
+     *
+     * 一覧で1行ずつ `getPhoto()` を呼ぶより往復が減る。渡すのは
+     * **実際に表示する行の車両IDだけ**にすること(全車両を無条件に読まない)。
+     */
+    async getPhotos(vehicleIds: readonly string[]): Promise<Map<string, VehiclePhoto>> {
+      if (vehicleIds.length === 0) return new Map()
+      const found = await database.vehiclePhotos.bulkGet([...vehicleIds])
+      return new Map(
+        found.filter((photo): photo is VehiclePhoto => photo !== undefined).map((p) => [p.vehicleId, p]),
+      )
     },
 
     /** 写真を設定・差し替える(既存があれば上書き)。更新後の車両を返す */
