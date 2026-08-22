@@ -11,6 +11,7 @@ import {
   BACKUP_SCHEMA_VERSION,
   CSV_BOM,
   backupFileName,
+  backupToPhotoBytes,
   buildBackup,
   buildFuelCsv,
   buildMaintenanceCsv,
@@ -18,9 +19,11 @@ import {
   fuelCsvFileName,
   localDateString,
   maintenanceCsvFileName,
+  photoToBackup,
   serializeBackup,
   type BackupData,
   type BackupFile,
+  type VehiclePhotoBackup,
 } from './export'
 
 // ---------------------------------------------------------------------------
@@ -160,6 +163,91 @@ describe('JSONバックアップ', () => {
     const parsed = JSON.parse(serializeBackup(buildBackup(empty, '2026-07-04T12:00:00.000Z')))
     expect(parsed.data.vehicles).toEqual([])
     expect(parsed.data.fuelRecords).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 愛車の写真(F-22)のバックアップ
+// ---------------------------------------------------------------------------
+
+describe('バックアップへの写真の格納', () => {
+  /** JPEG のシグネチャを含む擬似画像バイト列(0〜255 を一巡させる) */
+  const photoBytes = (marker: number, size = 300): Uint8Array => {
+    const bytes = new Uint8Array(size)
+    bytes.set([0xff, 0xd8, 0xff, marker])
+    for (let i = 4; i < size; i++) bytes[i] = (i * 7 + marker) & 0xff
+    return bytes
+  }
+
+  const photoMeta = {
+    vehicleId: 'v1',
+    mimeType: 'image/jpeg',
+    byteSize: 300,
+    width: 1280,
+    height: 960,
+    updatedAt: '2026-07-05T01:00:00.000Z',
+  }
+
+  it('写真がJSONを経由してもバイト単位で完全に復元できる', () => {
+    const bytes = photoBytes(0x11)
+    const entry = photoToBackup(photoMeta, bytes)
+    // JSONに載せて読み戻す(実際のバックアップと同じ経路)
+    const restored = JSON.parse(JSON.stringify(entry)) as VehiclePhotoBackup
+    expect(backupToPhotoBytes(restored)).toEqual(bytes)
+  })
+
+  it('メタ情報(MIMEタイプ・寸法・更新日時)も保持される', () => {
+    const entry = photoToBackup(photoMeta, photoBytes(0x11))
+    expect(entry.vehicleId).toBe('v1')
+    expect(entry.mimeType).toBe('image/jpeg')
+    expect(entry.width).toBe(1280)
+    expect(entry.height).toBe(960)
+    expect(entry.updatedAt).toBe('2026-07-05T01:00:00.000Z')
+    expect(entry.byteSize).toBe(300)
+    expect(entry.dataBase64).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
+  })
+
+  it('寸法が不明な写真はキーごと省略される', () => {
+    const entry = photoToBackup(
+      { vehicleId: 'v1', mimeType: 'image/jpeg', byteSize: 8, updatedAt: '2026-07-05T01:00:00.000Z' },
+      photoBytes(0x11, 8),
+    )
+    expect('width' in entry).toBe(false)
+    expect('height' in entry).toBe(false)
+  })
+
+  it('バイト数が記録と食い違うファイルは壊れているとして弾く', () => {
+    const entry = photoToBackup(photoMeta, photoBytes(0x11))
+    expect(() => backupToPhotoBytes({ ...entry, byteSize: 999 })).toThrow(/壊れています/)
+  })
+
+  it('data.vehiclePhotos の有無が includesPhotos に反映される', () => {
+    const withPhotos = buildBackup(
+      { ...fullData, vehiclePhotos: [photoToBackup(photoMeta, photoBytes(0x11))] },
+      '2026-07-04T12:00:00.000Z',
+    )
+    expect(withPhotos.includesPhotos).toBe(true)
+    expect(buildBackup(fullData, '2026-07-04T12:00:00.000Z').includesPhotos).toBe(false)
+    // 「含めたが0枚」も写真ありの扱い(インポート時に既存写真を消してよい根拠になる)
+    expect(buildBackup({ ...fullData, vehiclePhotos: [] }, '2026-07-04T12:00:00.000Z').includesPhotos).toBe(
+      true,
+    )
+  })
+
+  it('写真入りバックアップも往復で完全一致する', () => {
+    const backup = buildBackup(
+      {
+        ...fullData,
+        vehiclePhotos: [
+          photoToBackup(photoMeta, photoBytes(0x11)),
+          photoToBackup({ ...photoMeta, vehicleId: 'v2' }, photoBytes(0x22)),
+        ],
+      },
+      '2026-07-04T12:00:00.000Z',
+    )
+    const parsed = JSON.parse(serializeBackup(backup)) as BackupFile
+    expect(parsed).toEqual(backup)
+    expect(parsed.data.vehiclePhotos).toHaveLength(2)
   })
 })
 

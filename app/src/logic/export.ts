@@ -11,7 +11,8 @@
  * この層はデータ取得(DB)・ダウンロード(UI)に依存しない。
  * 取得と保存日時の記録は db/exportService.ts、ダウンロードは ui/download.ts が担う。
  */
-import type { AppSettings, FuelRecord, MaintenanceRecord, Vehicle } from '../types/models'
+import type { AppSettings, FuelRecord, MaintenanceRecord, Vehicle, VehiclePhoto } from '../types/models'
+import { base64ToBytes, bytesToBase64 } from './base64'
 import { maintenanceLabel } from './labels'
 
 // ---------------------------------------------------------------------------
@@ -25,8 +26,28 @@ export const BACKUP_FORMAT = 'car-maintenance-app-backup' as const
  * バックアップのスキーマバージョン。
  * エンティティの形(types/models.ts)や DB スキーマが変わったら +1 し、
  * インポート(F-15)側で旧バージョンからの変換を実装する。
+ *
+ * - 1: 初版(2026-07-05)
+ * - 2: 愛車の写真(F-22)に対応。Vehicle.photoUpdatedAt / data.vehiclePhotos が増えた。
+ *      v1 のファイルは「写真なしのバックアップ」としてそのまま読める(追加のみのため)
  */
-export const BACKUP_SCHEMA_VERSION = 1
+export const BACKUP_SCHEMA_VERSION = 2
+
+/**
+ * バックアップに入れる写真1枚(F-22)。
+ * JSON はバイナリを運べないため画像を Base64 文字列にして格納する。
+ */
+export interface VehiclePhotoBackup {
+  vehicleId: string
+  mimeType: string
+  /** 元のバイト数(復元時の整合チェックに使う) */
+  byteSize: number
+  width?: number
+  height?: number
+  updatedAt: string
+  /** 画像本体(Base64。Data URL ではなく本体のみ) */
+  dataBase64: string
+}
 
 /** バックアップに含める全データ */
 export interface BackupData {
@@ -35,6 +56,12 @@ export interface BackupData {
   fuelRecords: FuelRecord[]
   maintenanceRecords: MaintenanceRecord[]
   settings: AppSettings
+  /**
+   * 愛車の写真(F-22)。**「写真を含めない」でエクスポートした場合はキーごと存在しない**。
+   * 空配列 = 写真を含めたが1枚も無い、undefined = 写真を書き出していない、の区別が付く
+   * (インポート時に既存の写真を消してよいかの判断に使う)。
+   */
+  vehiclePhotos?: VehiclePhotoBackup[]
 }
 
 /** JSONバックアップファイルの構造 */
@@ -43,6 +70,8 @@ export interface BackupFile {
   schemaVersion: number
   /** エクスポート日時(ISO 8601) */
   exportedAt: string
+  /** 写真を含めて書き出したか(false なら data.vehiclePhotos は無い) */
+  includesPhotos: boolean
   data: BackupData
 }
 
@@ -52,8 +81,39 @@ export function buildBackup(data: BackupData, exportedAt: string): BackupFile {
     format: BACKUP_FORMAT,
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt,
+    includesPhotos: data.vehiclePhotos !== undefined,
     data,
   }
+}
+
+/**
+ * 写真(メタ情報 + 画像バイト列)をバックアップ用のエントリに変換する。
+ * Blob の読み出し(非同期)は呼び出し側(db/exportService.ts)で済ませておく。
+ */
+export function photoToBackup(photo: Omit<VehiclePhoto, 'blob'>, bytes: Uint8Array): VehiclePhotoBackup {
+  return {
+    vehicleId: photo.vehicleId,
+    mimeType: photo.mimeType,
+    byteSize: bytes.length,
+    ...(photo.width !== undefined ? { width: photo.width } : {}),
+    ...(photo.height !== undefined ? { height: photo.height } : {}),
+    updatedAt: photo.updatedAt,
+    dataBase64: bytesToBase64(bytes),
+  }
+}
+
+/**
+ * バックアップのエントリから画像バイト列を復元する(F-15 インポート用)。
+ * バイト数が記録と食い違う場合はファイルが壊れているとみなしてエラーにする。
+ */
+export function backupToPhotoBytes(entry: VehiclePhotoBackup): Uint8Array {
+  const bytes = base64ToBytes(entry.dataBase64)
+  if (typeof entry.byteSize === 'number' && entry.byteSize !== bytes.length) {
+    throw new Error(
+      `写真データが壊れています(${entry.vehicleId}: ${entry.byteSize}バイトのはずが${bytes.length}バイト)`,
+    )
+  }
+  return bytes
 }
 
 /** バックアップをJSON文字列にする(人間も読めるよう整形) */

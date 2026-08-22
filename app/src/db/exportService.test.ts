@@ -13,7 +13,7 @@ import { createFuelRecordRepository } from './repositories/fuelRecordRepository'
 import { createMaintenanceRepository } from './repositories/maintenanceRepository'
 import { createSettingsRepository } from './repositories/settingsRepository'
 import { createExportService } from './exportService'
-import { CSV_BOM, type BackupFile } from '../logic/export'
+import { CSV_BOM, backupToPhotoBytes, type BackupFile } from '../logic/export'
 
 /** テストごとに独立したDBとサービス一式を作る */
 function setup() {
@@ -68,7 +68,7 @@ describe('exportService.exportBackupJson', () => {
     expect(payload.mimeType).toBe('application/json')
 
     const parsed = JSON.parse(payload.content) as BackupFile
-    expect(parsed.schemaVersion).toBe(1)
+    expect(parsed.schemaVersion).toBe(2)
     expect(parsed.exportedAt).toBe('2026-07-04T12:00:00.000Z')
 
     // 車両: アーカイブ済みも含めて2台、DBの実体と完全一致
@@ -103,6 +103,83 @@ describe('exportService.exportBackupJson', () => {
     expect(parsed.data.vehicles).toEqual([])
     expect(parsed.data.fuelRecords).toEqual([])
     expect(parsed.data.maintenanceRecords).toEqual([])
+  })
+})
+
+describe('exportService.exportBackupJson: 愛車の写真(F-22)', () => {
+  /** 中身が判別できるダミー画像 */
+  const makePhoto = (marker: number, size = 128): Blob =>
+    new Blob([new Uint8Array([0xff, 0xd8, 0xff, marker, ...new Array<number>(size - 4).fill(marker)])], {
+      type: 'image/jpeg',
+    })
+
+  it('既定では写真がBase64で含まれ、バイト列が完全に復元できる', async () => {
+    const s = setup()
+    const { note } = await seed(s)
+    const photo = makePhoto(0x11)
+    await s.vehicles.setPhoto(note.id, { blob: photo, width: 1280, height: 960 })
+
+    const payload = await s.exporter.exportBackupJson(new Date('2026-07-04T12:00:00.000Z'))
+    const parsed = JSON.parse(payload.content) as BackupFile
+
+    expect(parsed.includesPhotos).toBe(true)
+    expect(parsed.data.vehiclePhotos).toHaveLength(1)
+
+    const entry = parsed.data.vehiclePhotos![0]
+    expect(entry.vehicleId).toBe(note.id)
+    expect(entry.mimeType).toBe('image/jpeg')
+    expect(entry.byteSize).toBe(photo.size)
+    expect(entry.width).toBe(1280)
+    expect(entry.height).toBe(960)
+    expect(entry.updatedAt).toBe((await s.vehicles.getById(note.id))?.photoUpdatedAt)
+
+    // JSON → バイト列 → 元の画像と一致(完全復元できること)
+    expect(backupToPhotoBytes(entry)).toEqual(new Uint8Array(await photo.arrayBuffer()))
+  })
+
+  it('includePhotos: false なら写真を含まず、ファイルも小さくなる', async () => {
+    const s = setup()
+    const { note } = await seed(s)
+    await s.vehicles.setPhoto(note.id, makePhoto(0x11, 4096))
+
+    const withPhotos = await s.exporter.exportBackupJson(new Date('2026-07-04T12:00:00.000Z'))
+    const without = await s.exporter.exportBackupJson(new Date('2026-07-04T12:00:00.000Z'), {
+      includePhotos: false,
+    })
+
+    const parsed = JSON.parse(without.content) as BackupFile
+    expect(parsed.includesPhotos).toBe(false)
+    // キーごと存在しない(= 写真を書き出していない。空配列とは意味が違う)
+    expect(parsed.data.vehiclePhotos).toBeUndefined()
+    expect('vehiclePhotos' in parsed.data).toBe(false)
+
+    expect(without.content.length).toBeLessThan(withPhotos.content.length)
+    // 車両・記録は変わらず入っている
+    expect(parsed.data.vehicles).toHaveLength(2)
+    expect(parsed.data.fuelRecords).toHaveLength(2)
+    // 写真なしでも photoUpdatedAt は残る(復元後に「写真だけ無い」と分かる)
+    expect(parsed.data.vehicles.find((v) => v.id === note.id)?.photoUpdatedAt).toBeTruthy()
+  })
+
+  it('写真が1枚も無ければ空配列(「含めたが0枚」と「含めていない」を区別する)', async () => {
+    const s = setup()
+    await seed(s)
+    const parsed = JSON.parse((await s.exporter.exportBackupJson()).content) as BackupFile
+    expect(parsed.includesPhotos).toBe(true)
+    expect(parsed.data.vehiclePhotos).toEqual([])
+  })
+
+  it('複数車両の写真がすべて含まれ、車両IDで対応が取れる', async () => {
+    const s = setup()
+    const { note, bike } = await seed(s)
+    await s.vehicles.setPhoto(note.id, makePhoto(0x11))
+    await s.vehicles.setPhoto(bike.id, makePhoto(0x22)) // アーカイブ済み車両の写真も対象
+
+    const parsed = JSON.parse((await s.exporter.exportBackupJson()).content) as BackupFile
+    const byVehicle = new Map(parsed.data.vehiclePhotos!.map((p) => [p.vehicleId, p]))
+    expect(byVehicle.size).toBe(2)
+    expect(backupToPhotoBytes(byVehicle.get(note.id)!)[3]).toBe(0x11)
+    expect(backupToPhotoBytes(byVehicle.get(bike.id)!)[3]).toBe(0x22)
   })
 })
 

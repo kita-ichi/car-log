@@ -25,7 +25,9 @@ import {
   fuelCsvFileName,
   localDateString,
   maintenanceCsvFileName,
+  photoToBackup,
   serializeBackup,
+  type VehiclePhotoBackup,
 } from '../logic/export'
 
 /** エクスポート1件分のダウンロード内容 */
@@ -35,6 +37,19 @@ export interface ExportPayload {
   mimeType: string
 }
 
+/** JSONバックアップのオプション */
+export interface BackupJsonOptions {
+  /**
+   * 愛車の写真(F-22)を Base64 で含めるか。既定 **true**
+   * (バックアップは「これ1つで完全復元できる」ことが原則のため)。
+   *
+   * 写真は Base64 化でバイト数が約4/3になり、1枚あたり 150〜400KB 程度に
+   * なるため、ファイルを軽くしたい場合に false を指定する。
+   * false で書き出したファイルには写真が入らない(復元しても写真は戻らない)。
+   */
+  includePhotos?: boolean
+}
+
 interface ExportServiceDeps {
   vehicles: VehicleRepository
   fuelRecords: FuelRecordRepository
@@ -42,21 +57,40 @@ interface ExportServiceDeps {
   settings: SettingsRepository
 }
 
+/**
+ * 全車両の写真を読み出して Base64 のバックアップエントリに変換する。
+ * Blob → バイト列の読み出しだけがここの仕事で、Base64 化は logic/export.ts の純粋関数。
+ */
+async function collectPhotoBackups(vehicles: VehicleRepository): Promise<VehiclePhotoBackup[]> {
+  const photos = await vehicles.listAllPhotos()
+  return Promise.all(
+    photos.map(async ({ blob, ...meta }) => photoToBackup(meta, new Uint8Array(await blob.arrayBuffer()))),
+  )
+}
+
 export function createExportService(deps: ExportServiceDeps) {
   return {
     /**
-     * JSONバックアップ(全車両〔アーカイブ含む〕・全記録・設定)を生成し、
+     * JSONバックアップ(全車両〔アーカイブ含む〕・全記録・設定・愛車の写真)を生成し、
      * 最終バックアップ日時(lastBackupAt)を記録する。
+     *
+     * @param now テスト・ファイル名用の基準日時
+     * @param options `{ includePhotos: false }` で写真を除いた軽いファイルにできる
      */
-    async exportBackupJson(now: Date = new Date()): Promise<ExportPayload> {
-      const [vehicles, fuelRecords, maintenanceRecords, settings] = await Promise.all([
+    async exportBackupJson(
+      now: Date = new Date(),
+      options: BackupJsonOptions = {},
+    ): Promise<ExportPayload> {
+      const includePhotos = options.includePhotos ?? true
+      const [vehicles, fuelRecords, maintenanceRecords, settings, vehiclePhotos] = await Promise.all([
         deps.vehicles.listAll(),
         deps.fuelRecords.listAll(),
         deps.maintenance.listAll(),
         deps.settings.getAppSettings(),
+        includePhotos ? collectPhotoBackups(deps.vehicles) : Promise.resolve(undefined),
       ])
       const backup = buildBackup(
-        { vehicles, fuelRecords, maintenanceRecords, settings },
+        { vehicles, fuelRecords, maintenanceRecords, settings, vehiclePhotos },
         now.toISOString(),
       )
       const payload: ExportPayload = {
