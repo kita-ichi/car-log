@@ -30,8 +30,12 @@ export const BACKUP_FORMAT = 'car-maintenance-app-backup' as const
  * - 1: 初版(2026-07-05)
  * - 2: 愛車の写真(F-22)に対応。Vehicle.photoUpdatedAt / data.vehiclePhotos が増えた。
  *      v1 のファイルは「写真なしのバックアップ」としてそのまま読める(追加のみのため)
+ * - 3: 写真の表示調整(F-22b)に対応。Vehicle.photoAdjust(任意)が増えた(2026-08-28)。
+ *      **旧バージョンのファイルもそのまま読める**: キーが無い = 調整なし = 既定値
+ *      (cover + center)で、読み出し側の `normalizePhotoAdjust()` が吸収する。
+ *      調整値は写真そのものではなく車両側に載るので、`vehiclePhotos` の形は v2 のまま
  */
-export const BACKUP_SCHEMA_VERSION = 2
+export const BACKUP_SCHEMA_VERSION = 3
 
 /**
  * バックアップに入れる写真1枚(F-22)。
@@ -51,7 +55,11 @@ export interface VehiclePhotoBackup {
 
 /** バックアップに含める全データ */
 export interface BackupData {
-  /** アーカイブ済みを含む全車両 */
+  /**
+   * アーカイブ済みを含む全車両。
+   * 写真の表示調整(F-22b)は `Vehicle.photoAdjust` としてここに入る
+   * (写真本体を含めずに書き出しても調整値だけは残る = 写真を入れ直せば構図が戻る)。
+   */
   vehicles: Vehicle[]
   fuelRecords: FuelRecord[]
   maintenanceRecords: MaintenanceRecord[]

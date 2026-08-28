@@ -25,6 +25,7 @@ import {
   type BackupFile,
   type VehiclePhotoBackup,
 } from './export'
+import { DEFAULT_PHOTO_ADJUST, normalizePhotoAdjust } from './photoAdjust'
 
 // ---------------------------------------------------------------------------
 // テストデータ(全フィールドを埋めた記録+任意項目なしの記録)
@@ -163,6 +164,58 @@ describe('JSONバックアップ', () => {
     const parsed = JSON.parse(serializeBackup(buildBackup(empty, '2026-07-04T12:00:00.000Z')))
     expect(parsed.data.vehicles).toEqual([])
     expect(parsed.data.fuelRecords).toEqual([])
+  })
+
+  /* ---- 写真の表示調整(F-22b) ---- */
+
+  it('写真の表示調整(photoAdjust)が往復で保たれる', () => {
+    const adjust = { zoom: 1.5, focusX: 0.2, focusY: 0.8 }
+    const data: BackupData = {
+      ...fullData,
+      vehicles: [{ ...fullData.vehicles[0], photoUpdatedAt: '2026-08-28T00:00:00.000Z', photoAdjust: adjust }],
+    }
+    const parsed = JSON.parse(serializeBackup(buildBackup(data, '2026-08-28T12:00:00.000Z'))) as BackupFile
+    expect(parsed.data.vehicles[0].photoAdjust).toEqual(adjust)
+  })
+
+  it('調整していない車両には photoAdjust キーが入らない(ファイルが太らない)', () => {
+    const json = serializeBackup(buildBackup(fullData, '2026-08-28T12:00:00.000Z'))
+    expect(json).not.toContain('photoAdjust')
+  })
+
+  it('写真を含めずに書き出しても調整値は残る(写真を入れ直せば構図が戻る)', () => {
+    const adjust = { zoom: 2, focusX: 0.1, focusY: 0.1 }
+    const data: BackupData = {
+      ...fullData,
+      vehicles: [{ ...fullData.vehicles[0], photoUpdatedAt: '2026-08-28T00:00:00.000Z', photoAdjust: adjust }],
+      // vehiclePhotos を付けない = 「写真を含めない」でのエクスポート
+    }
+    const parsed = JSON.parse(serializeBackup(buildBackup(data, '2026-08-28T12:00:00.000Z'))) as BackupFile
+    expect(parsed.includesPhotos).toBe(false)
+    expect(parsed.data.vehicles[0].photoAdjust).toEqual(adjust)
+  })
+
+  it('スキーマバージョンは 3(表示調整の追加で +1)', () => {
+    expect(BACKUP_SCHEMA_VERSION).toBe(3)
+  })
+
+  it('旧バージョン(v1 / v2)のファイルもそのまま読める(photoAdjust は追加のみ)', () => {
+    // v2 相当のファイル = 車両に photoAdjust キーが無い
+    const oldFile = {
+      format: BACKUP_FORMAT,
+      schemaVersion: 2,
+      exportedAt: '2026-07-05T12:00:00.000Z',
+      includesPhotos: true,
+      data: {
+        ...fullData,
+        vehicles: [{ ...fullData.vehicles[0], photoUpdatedAt: '2026-07-05T00:00:00.000Z' }],
+        vehiclePhotos: [],
+      },
+    }
+    const parsed = JSON.parse(JSON.stringify(oldFile)) as BackupFile
+    // 車両として読めて、調整値は「未設定」= 既定値(cover + center)として扱われる
+    expect(parsed.data.vehicles[0].photoAdjust).toBeUndefined()
+    expect(normalizePhotoAdjust(parsed.data.vehicles[0].photoAdjust)).toEqual(DEFAULT_PHOTO_ADJUST)
   })
 })
 

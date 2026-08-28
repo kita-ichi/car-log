@@ -68,7 +68,7 @@ describe('exportService.exportBackupJson', () => {
     expect(payload.mimeType).toBe('application/json')
 
     const parsed = JSON.parse(payload.content) as BackupFile
-    expect(parsed.schemaVersion).toBe(2)
+    expect(parsed.schemaVersion).toBe(3) // 3 = 写真の表示調整(F-22b)に対応
     expect(parsed.exportedAt).toBe('2026-07-04T12:00:00.000Z')
 
     // 車両: アーカイブ済みも含めて2台、DBの実体と完全一致
@@ -180,6 +180,45 @@ describe('exportService.exportBackupJson: 愛車の写真(F-22)', () => {
     expect(byVehicle.size).toBe(2)
     expect(backupToPhotoBytes(byVehicle.get(note.id)!)[3]).toBe(0x11)
     expect(backupToPhotoBytes(byVehicle.get(bike.id)!)[3]).toBe(0x22)
+  })
+
+  /* ---- 表示調整(F-22b) ---- */
+
+  it('写真の表示調整がバックアップに入る(写真と同じファイルで復元できる)', async () => {
+    const s = setup()
+    const { note } = await seed(s)
+    await s.vehicles.setPhoto(note.id, { blob: makePhoto(0x11), width: 1280, height: 960 })
+    const adjust = { zoom: 1.5, focusX: 0.2, focusY: 0.8 }
+    await s.vehicles.setPhotoAdjust(note.id, adjust)
+
+    const parsed = JSON.parse((await s.exporter.exportBackupJson()).content) as BackupFile
+    expect(parsed.data.vehicles.find((v) => v.id === note.id)?.photoAdjust).toEqual(adjust)
+  })
+
+  it('includePhotos: false でも調整値は残る(車両側の値なので写真の有無に依らない)', async () => {
+    const s = setup()
+    const { note } = await seed(s)
+    await s.vehicles.setPhoto(note.id, makePhoto(0x11))
+    await s.vehicles.setPhotoAdjust(note.id, { zoom: 2, focusX: 0.1, focusY: 0.9 })
+
+    const parsed = JSON.parse(
+      (await s.exporter.exportBackupJson(new Date(), { includePhotos: false })).content,
+    ) as BackupFile
+    expect(parsed.data.vehiclePhotos).toBeUndefined()
+    expect(parsed.data.vehicles.find((v) => v.id === note.id)?.photoAdjust).toEqual({
+      zoom: 2,
+      focusX: 0.1,
+      focusY: 0.9,
+    })
+  })
+
+  it('調整していない車両には photoAdjust キーが入らない', async () => {
+    const s = setup()
+    const { note } = await seed(s)
+    await s.vehicles.setPhoto(note.id, makePhoto(0x11))
+
+    const payload = await s.exporter.exportBackupJson()
+    expect(payload.content).not.toContain('photoAdjust')
   })
 })
 
