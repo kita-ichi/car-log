@@ -329,6 +329,157 @@ describe('vehicleRepository: 愛車の写真(F-22)', () => {
     await expect(vehicles.setPhoto('missing', makePhoto(0x11))).rejects.toThrow(/見つかりません/)
     expect(await vehicles.listAllPhotos()).toHaveLength(0)
   })
+
+  /* ---- 表示調整(F-22b) ---- */
+
+  /** 写真つきの車両を1台作る */
+  const withPhoto = async (vehicles: ReturnType<typeof setup>['vehicles']) =>
+    vehicles.create({ name: 'ノート', photo: makePhoto(0x11) })
+
+  const ADJUST = { zoom: 1.5, focusX: 0.2, focusY: 0.8 }
+
+  it('setPhotoAdjust で調整値が保存され、getById で読める', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    const updated = await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    expect(updated.photoAdjust).toEqual(ADJUST)
+    expect((await vehicles.getById(vehicle.id))?.photoAdjust).toEqual(ADJUST)
+  })
+
+  it('調整値を保存しても photoUpdatedAt は変わらない(画像を読み直させない)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    const updated = await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    // UI はこの値を ObjectURL のキャッシュキーにしている。変わらない = 読み直しが起きない
+    expect(updated.photoUpdatedAt).toBe(vehicle.photoUpdatedAt)
+    // 写真レコード側も無変更(画像バイト列に触っていない)
+    const stored = await vehicles.getPhoto(vehicle.id)
+    expect(stored?.updatedAt).toBe(vehicle.photoUpdatedAt)
+    expect(await readBytes(stored!.blob)).toEqual(await readBytes(makePhoto(0x11)))
+  })
+
+  it('調整前の車両は photoAdjust キー自体を持たない(= 既定値 / 従来の見え方)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    expect(vehicle.photoAdjust).toBeUndefined()
+    expect('photoAdjust' in vehicle).toBe(false)
+  })
+
+  it('既定値と同じ値を保存するとキーごと消える(「調整なし」の表し方を1つに保つ)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    const reset = await vehicles.setPhotoAdjust(vehicle.id, { zoom: 1, focusX: 0.5, focusY: 0.5 })
+    expect(reset.photoAdjust).toBeUndefined()
+    expect('photoAdjust' in reset).toBe(false)
+  })
+
+  it('resetPhotoAdjust / null 指定で既定値に戻る', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    expect((await vehicles.resetPhotoAdjust(vehicle.id)).photoAdjust).toBeUndefined()
+  })
+
+  it('保存時に小数が丸められる(6桁)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    const saved = await vehicles.setPhotoAdjust(vehicle.id, {
+      zoom: 1.23456789,
+      focusX: 0.123456789,
+      focusY: 0.5,
+    })
+    expect(saved.photoAdjust).toEqual({ zoom: 1.234568, focusX: 0.123457, focusY: 0.5 })
+  })
+
+  it('範囲外・壊れた調整値は保存されずエラーになる', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+
+    await expect(vehicles.setPhotoAdjust(vehicle.id, { zoom: 99, focusX: 0.5, focusY: 0.5 })).rejects.toThrow(
+      /zoom/,
+    )
+    await expect(vehicles.setPhotoAdjust(vehicle.id, { zoom: 1, focusX: 1.5, focusY: 0.5 })).rejects.toThrow(
+      /focusX/,
+    )
+    await expect(
+      vehicles.setPhotoAdjust(vehicle.id, { zoom: NaN, focusX: 0.5, focusY: 0.5 }),
+    ).rejects.toThrow(/zoom/)
+    expect((await vehicles.getById(vehicle.id))?.photoAdjust).toBeUndefined()
+  })
+
+  it('写真が無い車両には調整値を保存できない', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: '写真なし' })
+    await expect(vehicles.setPhotoAdjust(vehicle.id, ADJUST)).rejects.toThrow(/写真が設定されていない/)
+    await expect(vehicles.setPhotoAdjust('missing', ADJUST)).rejects.toThrow(/見つかりません/)
+  })
+
+  it('写真を差し替えると調整値は既定値に戻る(前の写真の構図を引き継がない)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    const replaced = await vehicles.setPhoto(vehicle.id, makePhoto(0x22))
+    expect(replaced.photoAdjust).toBeUndefined()
+    expect(replaced.photoUpdatedAt).not.toBe(vehicle.photoUpdatedAt) // 画像は差し替わっている
+  })
+
+  it('写真を削除すると調整値も消える', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    const removed = await vehicles.removePhoto(vehicle.id)
+    expect(removed.photoAdjust).toBeUndefined()
+    expect(removed.photoUpdatedAt).toBeUndefined()
+  })
+
+  it('写真と調整値を同時に指定した場合はその調整値が使われる(リセットに負けない)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+
+    const updated = await vehicles.update(vehicle.id, { photo: makePhoto(0x22), photoAdjust: ADJUST })
+    expect(updated.photoAdjust).toEqual(ADJUST)
+  })
+
+  it('登録と同時に写真＋調整値を設定できる', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photo: makePhoto(0x11), photoAdjust: ADJUST })
+    expect(vehicle.photoAdjust).toEqual(ADJUST)
+    expect((await vehicles.getById(vehicle.id))?.photoAdjust).toEqual(ADJUST)
+  })
+
+  it('写真なしで登録するときは調整値を指定しても保存されない(適用先が無い)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await vehicles.create({ name: 'ノート', photoAdjust: ADJUST })
+    expect(vehicle.photoAdjust).toBeUndefined()
+  })
+
+  it('他の項目を更新しても調整値は保たれる(undefined=変更なし)', async () => {
+    const { vehicles } = setup()
+    const vehicle = await withPhoto(vehicles)
+    await vehicles.setPhotoAdjust(vehicle.id, ADJUST)
+
+    const renamed = await vehicles.update(vehicle.id, { name: 'ノート e-POWER' })
+    expect(renamed.photoAdjust).toEqual(ADJUST)
+
+    await vehicles.archive(vehicle.id)
+    expect((await vehicles.getById(vehicle.id))?.photoAdjust).toEqual(ADJUST)
+  })
+
+  it('調整値は車両ごとに独立している', async () => {
+    const { vehicles } = setup()
+    const a = await withPhoto(vehicles)
+    const b = await vehicles.create({ name: 'ジムニー', photo: makePhoto(0x22) })
+    await vehicles.setPhotoAdjust(a.id, ADJUST)
+
+    expect((await vehicles.getById(b.id))?.photoAdjust).toBeUndefined()
+  })
 })
 
 describe('fuelRecordRepository', () => {

@@ -6,7 +6,13 @@
  *   一覧(listActive / listAll)で画像バイト列を読まないための分離。
  */
 import { db, type AppDatabase } from '../database'
-import type { FuelType, Vehicle, VehiclePhoto, VehicleType } from '../../types/models'
+import type { FuelType, PhotoAdjust, Vehicle, VehiclePhoto, VehicleType } from '../../types/models'
+import {
+  MAX_PHOTO_ZOOM,
+  MIN_PHOTO_ZOOM,
+  isDefaultPhotoAdjust,
+  normalizePhotoAdjust,
+} from '../../logic/photoAdjust'
 import { assertNumber, newId, nowIso, stripAbsent, toUpdatePatch } from './helpers'
 
 /**
@@ -30,6 +36,15 @@ export interface VehiclePhotoInput {
  */
 export type PhotoAssignment = Blob | VehiclePhotoInput | null
 
+/**
+ * 写真の表示調整(F-22b)の指定方法。
+ * - `PhotoAdjust` = その値にする(範囲外・壊れた値はエラー)
+ * - `null` = 既定値(cover + center)に戻す
+ * - `undefined`(キー省略)= 変更なし。ただし **`photo` を同時に指定した場合は
+ *   既定値にリセットされる**(前の写真の構図が別の写真に乗ると必ず破綻するため)
+ */
+export type PhotoAdjustAssignment = PhotoAdjust | null
+
 /** 車両の新規登録入力(id・タイムスタンプ・アーカイブ状態は自動付与) */
 export interface VehicleInput {
   name: string
@@ -46,6 +61,8 @@ export interface VehicleInput {
   inspectionExpiry?: string | null
   /** 愛車の写真(F-22)。登録と同時に設定する場合のみ指定 */
   photo?: PhotoAssignment
+  /** 写真の表示調整(F-22b)。省略時は既定値(cover + center) */
+  photoAdjust?: PhotoAdjustAssignment
 }
 
 /**
@@ -69,6 +86,7 @@ export type VehicleUpdate = Partial<
     | 'tankCapacity'
     | 'inspectionExpiry'
     | 'photoUpdatedAt'
+    | 'photoAdjust'
   >
 > & {
   initialOdo?: number | null
@@ -78,6 +96,7 @@ export type VehicleUpdate = Partial<
   tankCapacity?: number | null
   inspectionExpiry?: string | null
   photo?: PhotoAssignment
+  photoAdjust?: PhotoAdjustAssignment
 }
 
 /**
@@ -93,6 +112,8 @@ const CLEARABLE_KEYS = [
   'tankCapacity',
   'inspectionExpiry',
   'photoUpdatedAt',
+  // 既定値(cover + center)は「キーを持たない」で表す。DB上の「調整なし」を1通りに保つ
+  'photoAdjust',
 ] as const
 
 /**
@@ -103,12 +124,48 @@ function assertVehicleValues(values: {
   name?: string
   initialOdo?: number | null
   tankCapacity?: number | null
+  photoAdjust?: PhotoAdjustAssignment
 }): void {
   if (values.name !== undefined && values.name.trim() === '') {
     throw new Error('name(車両名)は空にできません')
   }
   assertNumber('initialOdo', values.initialOdo, { min: 0, nullable: true }) // 未設定可・null=クリア可。設定時は0以上
   assertNumber('tankCapacity', values.tankCapacity, { greaterThan: 0, nullable: true }) // null=クリア可
+  assertPhotoAdjust(values.photoAdjust)
+}
+
+/**
+ * 表示調整の値域チェック(§6.1)。
+ *
+ * UI は保存前に `clampPhotoAdjust()`(logic/photoAdjust.ts)を通す約束なので、
+ * ここに範囲外の値が来るのは呼び出し側のバグ。**黙って丸めず throw する**
+ * (他の任意項目と同じ扱い)。
+ */
+function assertPhotoAdjust(value: PhotoAdjustAssignment | undefined): void {
+  if (value === undefined || value === null) return
+  if (typeof value !== 'object') throw new Error('photoAdjust はオブジェクトで指定してください')
+  assertNumber('photoAdjust.zoom', value.zoom, { min: MIN_PHOTO_ZOOM })
+  assertNumber('photoAdjust.focusX', value.focusX, { min: 0 })
+  assertNumber('photoAdjust.focusY', value.focusY, { min: 0 })
+  if (value.zoom > MAX_PHOTO_ZOOM) {
+    throw new Error(`photoAdjust.zoom は ${MAX_PHOTO_ZOOM} 以下で指定してください: ${value.zoom}`)
+  }
+  for (const axis of ['focusX', 'focusY'] as const) {
+    if (value[axis] > 1) {
+      throw new Error(`photoAdjust.${axis} は 0〜1 で指定してください: ${value[axis]}`)
+    }
+  }
+}
+
+/**
+ * 保存する調整値へ変換する。
+ * 既定値(= 調整なし)は **null** にして、キーを持たない状態で保存させる
+ * (「調整なし」の表し方をDB上で1通りに保ち、旧データと同じ形にする)。
+ */
+function toStoredAdjust(value: PhotoAdjustAssignment | undefined): PhotoAdjust | null | undefined {
+  if (value === undefined) return undefined // 変更なし
+  if (value === null || isDefaultPhotoAdjust(value)) return null // キー削除
+  return normalizePhotoAdjust(value) // 桁数を丸めて保存
 }
 
 /** vehicles テーブルに書き込むフィールド群(photo は別テーブルなので含まない) */
@@ -116,6 +173,15 @@ type VehicleFieldPatch = Omit<VehicleUpdate, 'photo'> & {
   updatedAt: string
   /** null = 写真なしにする(キー削除)。undefined = 変更なし */
   photoUpdatedAt?: string | null
+}
+
+/** 「写真あり」の車両にだけ表示調整を保存できる(写真が無ければ適用先が無い) */
+function assertHasPhoto(vehicle: Vehicle | undefined, id: string): Vehicle {
+  if (!vehicle) throw new Error(`車両が見つかりません: ${id}`)
+  if (vehicle.photoUpdatedAt === undefined) {
+    throw new Error('写真が設定されていない車両には表示調整を保存できません')
+  }
+  return vehicle
 }
 
 /**
@@ -167,6 +233,8 @@ export function createVehicleRepository(database: AppDatabase) {
           tankCapacity: input.tankCapacity,
           inspectionExpiry: input.inspectionExpiry,
           photoUpdatedAt: photo ? now : undefined,
+          // 写真が無ければ調整値も持たせない(適用先が無い値を残さない)
+          photoAdjust: photo ? toStoredAdjust(input.photoAdjust) : undefined,
         }),
       }
       if (!photo) {
@@ -206,13 +274,17 @@ export function createVehicleRepository(database: AppDatabase) {
      */
     async update(id: string, patch: VehicleUpdate): Promise<Vehicle> {
       assertVehicleValues(patch)
-      const { photo, ...fields } = patch
+      const { photo, photoAdjust, ...fields } = patch
       const now = nowIso()
 
       const applyFields = async (): Promise<void> => {
         const fieldPatch: VehicleFieldPatch = { ...fields, updatedAt: now }
         // 写真を差し替えたら photoUpdatedAt も更新、削除なら null(= キー削除)
         if (photo !== undefined) fieldPatch.photoUpdatedAt = photo === null ? null : now
+        // 写真を差し替え・削除したら調整値は既定に戻す(前の写真の構図は引き継がない)。
+        // 新しい写真の調整値を同時に渡された場合はそちらを優先する
+        fieldPatch.photoAdjust =
+          photoAdjust !== undefined ? toStoredAdjust(photoAdjust) : photo !== undefined ? null : undefined
         // null=クリア / undefined=変更なし の契約を Dexie パッチへ変換
         const changes = toUpdatePatch<VehicleFieldPatch>(fieldPatch, CLEARABLE_KEYS) as Partial<Vehicle>
         const updated = await database.vehicles.update(id, changes)
@@ -270,6 +342,29 @@ export function createVehicleRepository(database: AppDatabase) {
     /** 写真を削除する(車両は残る)。更新後の車両を返す */
     async removePhoto(vehicleId: string): Promise<Vehicle> {
       return repository.update(vehicleId, { photo: null })
+    },
+
+    /**
+     * 写真の表示調整(F-22b)を保存する。更新後の車両を返す。
+     *
+     * - 値は `clampPhotoAdjust()`(logic/photoAdjust.ts)で範囲内にしてから渡すこと。
+     *   範囲外・壊れた値は throw する
+     * - 既定値(cover + center)と同じ値を渡すと**調整なしの状態に戻る**
+     *   (`resetPhotoAdjust()` と同じ結果)
+     * - **`photoUpdatedAt` は変えない**。画像バイト列は変わっていないので、
+     *   UI の ObjectURL を作り直させない(位置合わせのたびに画像を読み直さない)
+     *
+     * @throws 車両が無い場合・写真が設定されていない場合
+     */
+    async setPhotoAdjust(vehicleId: string, adjust: PhotoAdjustAssignment): Promise<Vehicle> {
+      assertPhotoAdjust(adjust)
+      assertHasPhoto(await database.vehicles.get(vehicleId), vehicleId)
+      return repository.update(vehicleId, { photoAdjust: adjust })
+    },
+
+    /** 表示調整を既定値(cover + center)に戻す。更新後の車両を返す */
+    async resetPhotoAdjust(vehicleId: string): Promise<Vehicle> {
+      return repository.setPhotoAdjust(vehicleId, null)
     },
 
     /** 全車両の写真(エクスポート用・F-11)。車両IDの昇順 */

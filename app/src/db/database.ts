@@ -46,6 +46,17 @@ export class AppDatabase extends Dexie {
     this.version(2).stores({
       vehiclePhotos: 'vehicleId',
     })
+
+    // 写真の表示調整(F-22b / Vehicle.photoAdjust)を 2026-08-28 に追加したが、
+    // **スキーマのバージョンは上げていない**。理由:
+    //   - photoAdjust は非インデックスのフィールドで、stores() の定義が変わらない
+    //     (Dexie は宣言したインデックスだけを管理し、値の形は関知しない)。
+    //     定義が同じまま version を足しても、空のアップグレードが走るだけで意味が無い
+    //   - 既存レコードはキーを持たないままでよい。読み出し側が
+    //     `normalizePhotoAdjust()`(logic/photoAdjust.ts)で既定値(cover + center)
+    //     として扱うため、**データ変換が不要**(= 既存の写真の見え方は変わらない)
+    //   - v2 で Vehicle.photoUpdatedAt を足したときと同じ扱い(上のコメント参照)
+    // インデックスが必要になったときは、この下に version(3) を追記すること。
   }
 }
 
