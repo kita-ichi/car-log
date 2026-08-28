@@ -11,7 +11,6 @@
 import type { PhotoAdjust } from '../types/models'
 import {
   MAX_PHOTO_ZOOM,
-  containZoom,
   normalizePhotoAdjust,
   photoLayout,
   type MaybeSize,
@@ -114,6 +113,23 @@ export function stepZoom(
 export function zoomLabel(zoom: number, min: number): string {
   if (zoom <= min + EPSILON) return '全体'
   return `${Math.round(zoom * 100)}%`
+}
+
+/**
+ * ノッチのラベル(「全体」「枠いっぱい」)を2つとも置けるだけ離れているか。
+ *
+ * 下限が 1.0 に近い写真(横4:3 なら 0.75)では2つのノッチがトラック上で
+ * 11% ほどしか離れず、375px幅ではラベルが重なって読めなくなる。
+ * その場合は「枠いっぱい」だけを出す — 下限側はスライダーの左端そのもので、
+ * つまみを端に寄せれば現在値の表示が「全体」になるため意味は失われない。
+ *
+ * しきい値 0.19 の根拠(375px幅): トラックの実効幅は 219px、
+ * 左端に置く「全体」が 22px + 余白6px なので、「枠いっぱい」の中心(ラベル幅55pxの半分)は
+ * 左端から 28 + 27.5 = 55.5px 以上、つまり `(55.5 − 14) ÷ 219 ≒ 0.19` 以上必要になる。
+ */
+export function canLabelBothNotches(range: ZoomRange): boolean {
+  if (range.max <= range.min) return false
+  return (1 - range.min) / (range.max - range.min) >= 0.19
 }
 
 // ---------------------------------------------------------------------------

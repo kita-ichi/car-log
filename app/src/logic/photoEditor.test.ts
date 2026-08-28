@@ -14,6 +14,7 @@ import {
   THUMB_FRAME,
   ZOOM_SNAP,
   ZOOM_STEP,
+  canLabelBothNotches,
   fillFrame,
   fitWholePhoto,
   nudgeFocus,
@@ -123,6 +124,23 @@ describe('zoomLabel(現在値の表示・aria-valuetext)', () => {
     expect(zoomLabel(1, 0.42)).toBe('100%')
     expect(zoomLabel(1.2, 0.42)).toBe('120%')
     expect(zoomLabel(3, 0.42)).toBe('300%')
+  })
+})
+
+describe('canLabelBothNotches(ノッチのラベルを2つ置けるか)', () => {
+  it('縦写真(下限0.42)は2つのノッチが十分離れているので両方出す', () => {
+    // (1 − 0.421875) ÷ (3 − 0.421875) = 22% 離れる
+    expect(canLabelBothNotches(zoomRange(PORTRAIT, HERO_FRAME))).toBe(true)
+  })
+
+  it('横4:3(下限0.75)は近すぎるので「枠いっぱい」だけにする', () => {
+    // (1 − 0.75) ÷ (3 − 0.75) = 11% しか離れず、375px幅でラベルが重なる
+    expect(canLabelBothNotches(zoomRange(LANDSCAPE, HERO_FRAME))).toBe(false)
+    expect(canLabelBothNotches(zoomRange(PANORAMA, HERO_FRAME))).toBe(false)
+  })
+
+  it('下限が1(縮小できない)なら片方だけ', () => {
+    expect(canLabelBothNotches({ min: 1, max: 3 })).toBe(false)
   })
 })
 
