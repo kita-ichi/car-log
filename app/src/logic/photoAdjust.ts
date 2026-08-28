@@ -11,10 +11,12 @@
  *
  * ## 調整値の表し方(枠に依存しない相対値)
  * - `zoom`: **その枠を覆う最小倍率(cover)を 1 とする相対値**。
- *   cover は枠ごとに計算されるので、同じ `zoom` を 16:7 の枠にも 1:1 の枠にも
+ *   cover は枠ごとに計算されるので、同じ `zoom` を 16:9 の枠にも 1:1 の枠にも
  *   そのまま適用できる(`zoom: 1` はどちらの枠でも「ちょうど覆う」)
- * - `focusX` / `focusY`: **写真自身の座標**上の注視点(0〜1)。この点が枠の中心に
- *   来るように置く。写真の一点を指すだけなので、これも枠の形に依存しない
+ * - `focusX` / `focusY`: **はみ出した分のどこを見せるか**(0〜1)。
+ *   0 = 写真の左端(上端)を枠の端に合わせる / 1 = 右端(下端) / 0.5 = 中央。
+ *   CSS の `object-position: focusX*100% focusY*100%` と同じ意味なので、
+ *   はみ出し量が枠ごとに違っても 0〜1 がそのまま「端から端まで」に対応する
  *
  * 既定値 `{ zoom: 1, focusX: 0.5, focusY: 0.5 }` を入れると
  * `object-fit: cover; object-position: center` と**完全に同じ配置**になる
@@ -24,6 +26,8 @@
  * `zoom` が `containZoom()`(写真全体が収まる倍率)を下回ると枠に余白が出る。
  * これは不具合ではなく「写真全体を見せたい」という要望そのものなので、
  * **余白が出る軸は注視点を無視して中央に置く**(端に寄せられると崩れて見えるため)。
+ *
+ * 対応する設計: docs/design/デザインガイド.md 5.15.6(保持する値と描画規則)
  */
 import type { PhotoAdjust } from '../types/models'
 
@@ -44,7 +48,7 @@ export const DEFAULT_PHOTO_ADJUST: PhotoAdjust = { zoom: 1, focusX: 0.5, focusY:
  * `containZoom = min(枠比/写真比, 写真比/枠比)`(`containZoom()`)。
  * つまりこの下限は「縦横比が枠と最大何倍まで違っても縮小しきれるか」を決めていて、
  * 0.05 なら **20倍** の違いまで許容する
- * (16:7 の枠なら 1:8.7 の超縦長写真〜45:1 の超横長パノラマまで全体を収められる)。
+ * (16:9 の枠なら 1:11 の超縦長写真〜35:1 の超横長パノラマまで全体を収められる)。
  *
  * UI のスライダー下限にはこの定数ではなく、その枠の `containZoom()` を使うこと
  * (それ以上縮めても余白が増えるだけで、見える範囲は変わらない)。
@@ -52,11 +56,11 @@ export const DEFAULT_PHOTO_ADJUST: PhotoAdjust = { zoom: 1, focusX: 0.5, focusY:
 export const MIN_PHOTO_ZOOM = 0.05
 
 /**
- * 保存を許す拡大率の上限。
- * 保存画像の長辺は 1280px(MAX_PHOTO_EDGE)なので、cover の4倍まで拡大すると
- * 元画像の1/4幅を引き伸ばすことになり、これ以上は実用的な画質にならない。
+ * 保存を許す拡大率の上限(デザインガイド `--ph-zoom-max`)。
+ * 保存画像の長辺は 1280px(MAX_PHOTO_EDGE)なので、cover の3倍まで拡大すると
+ * 元画像の1/3幅を引き伸ばすことになり、これ以上は実用的な画質にならない。
  */
-export const MAX_PHOTO_ZOOM = 4
+export const MAX_PHOTO_ZOOM = 3
 
 /**
  * 保存時に丸める小数桁数(JSONバックアップを無用に長くしないため)。
@@ -169,6 +173,22 @@ export function isDefaultPhotoAdjust(value: Partial<PhotoAdjust> | null | undefi
   )
 }
 
+/**
+ * 拡大率に下限を課した調整値を返す(位置はそのまま)。
+ *
+ * **44pxサムネイル用**(デザインガイド 5.15.6「2つの枠への適用」):
+ * サムネイルは `withMinZoom(adjust, 1)` を通してから描画する。
+ * 「どこを見せたいか」の意図は共有しつつ、識別が目的の小さな枠に余白を作らない
+ * (ヒーローで全体表示まで縮小しても、サムネイルは常に写真で埋まる)。
+ */
+export function withMinZoom(
+  adjust: Partial<PhotoAdjust> | null | undefined,
+  minZoom: number,
+): PhotoAdjust {
+  const value = normalizePhotoAdjust(adjust)
+  return value.zoom >= minZoom ? value : { ...value, zoom: minZoom }
+}
+
 // ---------------------------------------------------------------------------
 // 表示計算
 // ---------------------------------------------------------------------------
@@ -198,23 +218,26 @@ export interface PhotoLayout {
 }
 
 /**
- * 1軸ぶんの配置を決める。
+ * 1軸ぶんの配置を決める(デザインガイド 5.15.6 の描画規則)。
  *
- * - 描画長さが枠より**長い**(通常・拡大時): 注視点が枠の中心に来る位置を求め、
- *   枠の外に余白が見えないよう `[枠長 - 描画長, 0]` にクランプする
- * - 描画長さが枠**以下**(縮小して収まっている): はみ出しが無いので
- *   クランプは意味を持たない。注視点は無視して**中央に置く**
+ * - 描画長さが枠より**長い**(通常・拡大時): `offset = (枠長 - 描画長) × focus`。
+ *   `枠長 - 描画長` は負なので、focus が 0〜1 である限り offset は
+ *   `[枠長 - 描画長, 0]` に必ず収まる = **枠の外に余白が出ることは原理的に無い**
+ *   (クランプ処理が要らないのがこの式の利点。focus の範囲は
+ *   `normalizePhotoAdjust()` が保証する)
+ * - 描画長さが枠**以下**(縮小して収まっている): はみ出しが無く focus に意味が
+ *   無いので**中央に置く**(端に寄せられると崩れて見えるため)
  */
 function placeAxis(
   frameLength: number,
   drawnLength: number,
   focus: number,
 ): { offset: number; gap: boolean } {
+  const slack = frameLength - drawnLength
   if (drawnLength <= frameLength) {
-    return { offset: (frameLength - drawnLength) / 2, gap: drawnLength + EPSILON < frameLength }
+    return { offset: slack / 2, gap: drawnLength + EPSILON < frameLength }
   }
-  const centered = frameLength / 2 - focus * drawnLength
-  return { offset: clamp(centered, frameLength - drawnLength, 0), gap: false }
+  return { offset: slack * focus, gap: false }
 }
 
 /**
@@ -227,13 +250,13 @@ function placeAxis(
  *
  * ### 既定値が現行表示と一致する理由
  * `zoom = 1` のとき倍率は cover そのもの。cover の定義から描画幅・高さは必ず枠以上に
- * なるので両軸ともクランプのある枝に入り、`focus = 0.5` の位置
- * `枠長/2 - 0.5 × 描画長 = (枠長 - 描画長)/2` は範囲 `[枠長 - 描画長, 0]` の内側
- * (= クランプが効かない)。これは中央寄せそのもので、
- * `object-fit: cover; object-position: center` と同じ配置になる。
+ * なるので、両軸とも「はみ出す側」の式 `(枠長 - 描画長) × focus` に入る。
+ * `focus = 0.5` を入れると `(枠長 - 描画長)/2` = 中央寄せで、
+ * これは `object-fit: cover; object-position: center` と同じ配置。
+ * (どちらの軸も等しい場合は「収まる側」の式になるが、値は同じ `(枠長 - 描画長)/2` = 0)
  *
  * @param image 写真の実寸(`img.naturalWidth/naturalHeight` か `VehiclePhoto.width/height`)
- * @param frame 表示枠。**比だけが使われる**ので `{ width: 16, height: 7 }` でよい
+ * @param frame 表示枠。**比だけが使われる**ので `{ width: 16, height: 9 }` でよい
  * @param adjust 調整値(未設定・不正なら既定値として扱う)
  */
 export function photoLayout(
