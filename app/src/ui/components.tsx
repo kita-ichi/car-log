@@ -207,6 +207,8 @@ export function VehicleSheet() {
               type={v.vehicleType}
               hasPhoto={v.photoUpdatedAt !== undefined}
               url={photoUrls.get(v.id)}
+              /* 注視点は反映し、倍率は max(1, zoom) にクランプ(§0.4)。実寸は読み込み時に実測 */
+              adjust={v.photoAdjust}
               loading="eager"
             />
             <span className="grow">

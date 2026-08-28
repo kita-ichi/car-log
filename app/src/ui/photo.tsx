@@ -1,7 +1,9 @@
 /**
- * 愛車の写真(F-22)の共通UI部品(デザインガイド 5.15 / 画面設計書 §0.4)
+ * 愛車の写真(F-22 / F-22b)の共通UI部品(デザインガイド 5.15 / 画面設計書 §0.4)
  * - 写真の読み込み(ObjectURL の生成と解放)を行うフック
+ * - 調整値(倍率・注視点)を当てて枠に敷く `PhotoFill`
  * - 44pxサムネイル(S-08 一覧 / S-11 切り替えシート)
+ * - 写真ピッカー(S-08 車両編集フォーム)
  *
  * 方針:
  * - 写真の**有無**は `vehicle.photoUpdatedAt` で判定する(DBを触らない)。
@@ -9,18 +11,35 @@
  * - 一覧では行ごとに `getPhoto` を呼ばず `getPhotos(ids)` で一括取得する
  * - 作った ObjectURL は必ず解放する(useEffect のクリーンアップ)
  * - 読み込み失敗は**無言でフォールバック**(タイプアイコン / 無地ネイビー)
+ * - 調整値は ObjectURL の依存配列に**入れない**(位置を動かすたびに画像を読み直さない)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Vehicle, VehiclePhoto, VehicleType } from '../types/models'
+import type { PhotoAdjust, Vehicle, VehiclePhoto, VehicleType } from '../types/models'
 import { vehicleRepository, type PhotoAssignment } from '../db/repositories'
 import { ImageError, formatByteSize, formatCompressionNote } from '../logic/image'
+import {
+  clampPhotoAdjust,
+  isDefaultPhotoAdjust,
+  normalizePhotoAdjust,
+  photoBoxStyle,
+  photoLayout,
+  withMinZoom,
+  type MaybeSize,
+  type Size,
+} from '../logic/photoAdjust'
+import {
+  HERO_FRAME,
+  THUMB_FRAME,
+  THUMB_MIN_ZOOM,
+  shouldHintPhotoAdjust,
+} from '../logic/photoEditor'
 import {
   createPhotoObjectUrl,
   processVehiclePhoto,
   revokePhotoObjectUrl,
   type ProcessedImage,
 } from './imageProcessing'
-import { PhotoIcon, VehicleIcon } from './icons'
+import { ExpandIcon, PhotoIcon, VehicleIcon } from './icons'
 
 /* ============ 読み込みフック ============ */
 
@@ -115,29 +134,123 @@ export function useVehiclePhotoUrls(
   return urls
 }
 
+/** `<img>` に渡す読み込みハンドラ(そのまま展開して使う) */
+export interface PhotoImgProps {
+  onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => void
+  onError: () => void
+  decoding: 'async'
+}
+
 /**
  * `<img>` の読み込み状態(5.15.5)。
  * - 到着したら `shown` が true になる(呼び出し側でフェードイン用のクラスを付ける)
  * - 失敗したら `failed`。**エラー表示はせず**タイプアイコン/無地ネイビーに戻す
+ * - 到着時に**実寸**を控える。調整値(5.15.6)の描画に必要で、`VehiclePhoto.width/height`
+ *   を持たない古いレコードでもこれで補える
  */
 export function usePhotoLoadState(url: string | null | undefined): {
   shown: boolean
   failed: boolean
-  imgProps: { onLoad: () => void; onError: () => void; decoding: 'async' }
+  /** 読み込めた画像の実寸(未ロード・失敗・取得不可なら null) */
+  naturalSize: Size | null
+  imgProps: PhotoImgProps
 } {
   // 結果は URL とセットで持つ。写真を差し替えた直後に前の結果を引きずらない
-  const [result, setResult] = useState<{ url: string; status: 'loaded' | 'failed' } | null>(null)
-  const status = url && result?.url === url ? result.status : 'loading'
+  const [result, setResult] = useState<{
+    url: string
+    status: 'loaded' | 'failed'
+    size: Size | null
+  } | null>(null)
+  const current = url && result?.url === url ? result : null
 
   return {
-    shown: status === 'loaded',
-    failed: status === 'failed',
+    shown: current?.status === 'loaded',
+    failed: current?.status === 'failed',
+    naturalSize: current?.size ?? null,
     imgProps: {
-      onLoad: () => url && setResult({ url, status: 'loaded' }),
-      onError: () => url && setResult({ url, status: 'failed' }),
+      onLoad: (event) => {
+        const img = event.currentTarget
+        if (!url) return
+        const size = img.naturalWidth > 0 && img.naturalHeight > 0
+          ? { width: img.naturalWidth, height: img.naturalHeight }
+          : null
+        setResult({ url, status: 'loaded', size })
+      },
+      onError: () => url && setResult({ url, status: 'failed', size: null }),
       decoding: 'async',
     },
   }
+}
+
+/* ============ 調整値を当てた描画(5.15.6) ============ */
+
+/** 幅・高さが揃っている最初の寸法を返す(保存済みの実寸 → 実測 の順に使う) */
+export function firstUsableSize(...sizes: MaybeSize[]): MaybeSize {
+  return (
+    sizes.find(
+      (s): s is Size =>
+        !!s &&
+        typeof s.width === 'number' &&
+        s.width > 0 &&
+        typeof s.height === 'number' &&
+        s.height > 0,
+    ) ?? null
+  )
+}
+
+/**
+ * 枠に写真を敷く(調整値を反映)。
+ *
+ * 枠側は `position: relative; overflow: hidden` + 比の固定(`aspect-ratio`)にしておく。
+ * 実寸が分からない場合は**従来どおりの cover 表示**にフォールバックする
+ * (= 調整の既定値と同じ見え方なので、既存の写真の見え方は変わらない)。
+ *
+ * 縮小して余白が出たときだけ、写真の外周に内枠1px(`--ph-pad-edge`)を重ねる。
+ * `<img>` 自身の inset シャドウは画像本体に隠れるため、同じ位置の要素で描く。
+ */
+export function PhotoFill({
+  url,
+  alt = '',
+  size,
+  frame,
+  adjust,
+  minZoom,
+  imgClassName,
+  loading,
+  imgProps,
+}: {
+  url: string
+  /** 装飾なら '' のまま(5.15.5: 一覧・ヒーローは alt="") */
+  alt?: string
+  /** 写真の実寸。null/欠損なら cover にフォールバック */
+  size: MaybeSize
+  /** 枠の比(`HERO_FRAME` / `THUMB_FRAME`)。実ピクセルの測定は不要 */
+  frame: Size
+  adjust?: Partial<PhotoAdjust> | null
+  /** 倍率の下限(44pxサムネは 1 = 余白を作らない) */
+  minZoom?: number
+  imgClassName?: string
+  loading?: 'lazy' | 'eager'
+  imgProps?: PhotoImgProps
+}) {
+  const value = minZoom === undefined ? adjust : withMinZoom(adjust, minZoom)
+  const layout = photoLayout(size, frame, value)
+  const style = photoBoxStyle(layout) ?? undefined
+  const hasGap = layout !== null && (layout.hasGapX || layout.hasGapY)
+
+  return (
+    <>
+      <img
+        src={url}
+        alt={alt}
+        loading={loading}
+        style={style}
+        className={[imgClassName, style ? 'ph-box' : null].filter(Boolean).join(' ') || undefined}
+        {...imgProps}
+      />
+      {hasGap && <span className="ph-edge" style={style} aria-hidden="true" />}
+    </>
+  )
 }
 
 /* ============ サムネイル(5.15.2) ============ */
@@ -151,35 +264,50 @@ export function usePhotoLoadState(url: string | null | undefined): {
  * | 写真なし・読み込み失敗 | 写真スロットの中央にタイプアイコン24px |
  * | 読み込み中 | 写真スロットのみ(無地)。到着したらフェードイン |
  *
+ * 調整値(5.15.6)は**注視点はそのまま・倍率は `max(1, zoom)`** で反映する。
+ * 「どこを写したいか」の意図は共有しつつ、識別が目的の44px枠に余白は作らない。
+ *
  * 装飾のため `aria-hidden`(車両名テキスト・行の aria-label が情報を担う)。
  */
 export function VehiclePhotoThumb({
   type,
   hasPhoto,
   url,
+  adjust,
+  size,
   loading = 'lazy',
 }: {
   type: VehicleType
   /** 写真が設定されているか(`vehicle.photoUpdatedAt !== undefined`) */
   hasPhoto: boolean
   url?: string | null
+  /** 表示調整(`vehicle.photoAdjust`)。未設定なら従来どおりの中央 cover */
+  adjust?: Partial<PhotoAdjust> | null
+  /** 写真の実寸(`VehiclePhoto.width/height`)。無ければ読み込み時の実測で補う */
+  size?: MaybeSize
   /** 一覧は lazy、シート内は eager(開いた瞬間に見える必要がある) */
   loading?: 'lazy' | 'eager'
 }) {
-  const { shown, failed, imgProps } = usePhotoLoadState(url)
+  const { shown, failed, naturalSize, imgProps } = usePhotoLoadState(url)
   // 写真があるはずだがまだ届いていない = 無地のスロット(アイコンを出すとチラつく)
   const pending = hasPhoto && !shown && !failed
 
   return (
     <span className="vthumb" aria-hidden="true">
       {url && !failed && (
-        <img
-          src={url}
-          alt=""
-          loading={loading}
-          className={`ph-fade${shown ? ' on' : ''}`}
-          {...imgProps}
-        />
+        /* 拡大した写真が44px枠からはみ出さないようクリップする(バッジは枠の外に出す) */
+        <span className="clip">
+          <PhotoFill
+            url={url}
+            size={firstUsableSize(size, naturalSize)}
+            frame={THUMB_FRAME}
+            adjust={adjust}
+            minZoom={THUMB_MIN_ZOOM}
+            loading={loading}
+            imgClassName={`ph-fade${shown ? ' on' : ''}`}
+            imgProps={imgProps}
+          />
+        </span>
       )}
       {shown ? (
         <span className="tbadge">
@@ -203,6 +331,12 @@ type StagedPhoto =
 export interface StagedVehiclePhoto {
   /** プレビューに出す画像URL。未設定・削除予定なら null */
   previewUrl: string | null
+  /** プレビュー写真の実寸(調整値の描画・スライダー下限に使う)。不明なら null */
+  previewSize: MaybeSize
+  /** 表示中の写真に適用する調整値(保留中の変更を反映済み) */
+  adjust: PhotoAdjust
+  /** 調整シート(S-08a)の結果を保留する。DBへの保存はフォームの「保存する」 */
+  stageAdjust: (next: PhotoAdjust) => void
   /** 既存写真の読み込み中(枠は出すが中身がまだ無い状態) */
   loadingExisting: boolean
   /** 「3.4 MB → 210 KB」/ 既存写真は保存サイズのみ */
@@ -217,6 +351,8 @@ export interface StagedVehiclePhoto {
   removePhoto: () => void
   /** 保存時に vehicleRepository へ渡す値(undefined=変更なし / null=削除) */
   photoPatch: PhotoAssignment | undefined
+  /** 保存時に渡す調整値(undefined=変更なし。写真の差し替え・削除時は既定へ戻る) */
+  adjustPatch: PhotoAdjust | undefined
 }
 
 /**
@@ -229,6 +365,8 @@ export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVeh
   const vehicle = target !== null && target !== 'new' ? target : null
   const existing = useVehiclePhoto(vehicle)
   const [staged, setStaged] = useState<StagedPhoto>({ kind: 'keep' })
+  /** 保留中の調整値。null = このフォームではまだ調整していない(= 変更なし) */
+  const [stagedAdjust, setStagedAdjust] = useState<PhotoAdjust | null>(null)
   const [processing, setProcessing] = useState(false)
   const [showSpinner, setShowSpinner] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -239,6 +377,8 @@ export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVeh
     revokePhotoObjectUrl(stagedUrlRef.current)
     stagedUrlRef.current = next.kind === 'set' ? next.url : null
     setStaged(next)
+    // 写真を差し替え・削除したら調整は引き継がない(別の構図に他人の調整が乗ると破綻する)
+    setStagedAdjust(null)
   }, [])
 
   // フォームを開き直したら(別の車両・新規登録)選択内容を破棄する
@@ -284,6 +424,13 @@ export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVeh
   const previewUrl =
     staged.kind === 'set' ? staged.url : staged.kind === 'remove' ? null : existing.url
 
+  const previewSize =
+    staged.kind === 'set'
+      ? { width: staged.processed.width, height: staged.processed.height }
+      : staged.kind === 'keep'
+        ? existing.photo
+        : null
+
   const sizeNote =
     staged.kind === 'set'
       ? formatCompressionNote(staged.processed.sourceByteSize, staged.processed.byteSize)
@@ -291,8 +438,15 @@ export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVeh
         ? formatByteSize(existing.photo.byteSize)
         : null
 
+  // 新しく選んだ写真は既定値から始める。既存写真は保存済みの調整値が出発点
+  const baseAdjust =
+    staged.kind === 'keep' ? normalizePhotoAdjust(vehicle?.photoAdjust) : normalizePhotoAdjust(null)
+
   return {
     previewUrl,
+    previewSize,
+    adjust: stagedAdjust ?? baseAdjust,
+    stageAdjust: (next: PhotoAdjust) => setStagedAdjust(clampPhotoAdjust(next)),
     loadingExisting:
       staged.kind === 'keep' && vehicle?.photoUpdatedAt !== undefined && existing.url === null,
     sizeNote,
@@ -303,6 +457,9 @@ export function useStagedVehiclePhoto(target: 'new' | Vehicle | null): StagedVeh
     removePhoto,
     photoPatch:
       staged.kind === 'set' ? staged.processed : staged.kind === 'remove' ? null : undefined,
+    // 削除予定のときは値を渡さない(写真の無い車両に調整値だけ残さない。
+    // photo: null と同時に渡すと調整値の方が優先されてしまう)
+    adjustPatch: staged.kind === 'remove' ? undefined : (stagedAdjust ?? undefined),
   }
 }
 
@@ -319,20 +476,35 @@ export function VehiclePhotoField({
   vehicleType,
   isNew,
   onRequestRemove,
+  onRequestAdjust,
 }: {
   photo: StagedVehiclePhoto
   vehicleType: VehicleType
   isNew: boolean
   /** 「写真を削除」タップ(確認ダイアログは呼び出し側で出す) */
   onRequestRemove: () => void
+  /** 「位置とサイズを調整」タップ(S-08a のシートは呼び出し側で開く) */
+  onRequestAdjust: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const { previewUrl, processing, showSpinner, error } = photo
+  const { previewUrl, previewSize, adjust, processing, showSpinner, error } = photo
   const busy = processing && showSpinner
   // 保存済みの写真が壊れている場合、**この画面でだけ**明示する(一覧・ホームは無言でフォールバック)
-  const { failed: previewFailed, imgProps } = usePhotoLoadState(previewUrl)
+  const { failed: previewFailed, naturalSize, imgProps } = usePhotoLoadState(previewUrl)
   const displayError =
     error ?? (previewFailed ? '写真を読み込めませんでした。選び直してください' : null)
+
+  // 実寸: 保存済みの値を優先し、持っていない古いレコードは読み込み時の実測で補う
+  const size = firstUsableSize(previewSize, naturalSize)
+  // 発見性のヒント(5.15.4): 既定で写真の70%未満しか映らない写真のときだけ出す。
+  // **アンバー(警告色)は使わない** — 不具合ではなく仕様のため。
+  // 調整済み(既定値以外)のときは出さない: 文面が事実と食い違ううえ、
+  // 「一度きりのヒント」という位置づけにも反する(既定に戻せばまた出る)
+  const showHint = shouldHintPhotoAdjust(size, HERO_FRAME) && isDefaultPhotoAdjust(adjust)
+  const hintText =
+    size && (size.height ?? 0) > (size.width ?? 0)
+      ? '縦長の写真のため、一部だけが表示されます'
+      : '横長の写真のため、一部だけが表示されます'
 
   const openPicker = () => inputRef.current?.click()
 
@@ -363,7 +535,14 @@ export function VehiclePhotoField({
         <>
           {/* ホームでの見え方: 実際のスクリムを適用して「暗く出る」ことを事前に伝える */}
           <div className="photo-hero">
-            <img src={previewUrl} alt="登録した写真のプレビュー" {...imgProps} />
+            <PhotoFill
+              url={previewUrl}
+              alt="登録した写真のプレビュー"
+              size={size}
+              frame={HERO_FRAME}
+              adjust={adjust}
+              imgProps={imgProps}
+            />
             <span className="scrim" />
             <span className="demo">
               <span className="lbl">直近の燃費</span>
@@ -380,11 +559,42 @@ export function VehiclePhotoField({
           </div>
           <div className="cap">ホームでの見え方(数値は例)</div>
 
+          {/* 発見性のヒント(チップ全体がタップ領域)。グレー=不具合ではなく仕様 */}
+          {showHint && (
+            <button
+              type="button"
+              className="photo-hint"
+              onClick={onRequestAdjust}
+              disabled={processing}
+            >
+              <span className="t">{hintText}</span>
+              <span className="a">調整する</span>
+            </button>
+          )}
+
           {/* 一覧・切り替えでの見え方 */}
           <div className="photo-thumbrow">
-            <VehiclePhotoThumb type={vehicleType} hasPhoto url={previewUrl} loading="eager" />
+            <VehiclePhotoThumb
+              type={vehicleType}
+              hasPhoto
+              url={previewUrl}
+              adjust={adjust}
+              size={size}
+              loading="eager"
+            />
             <span className="cap">一覧・切り替えでの見え方</span>
           </div>
+
+          {/* 調整は「写真を選んだ直後に最も起きる操作」のため幅いっぱいの主導線にする */}
+          <button
+            type="button"
+            className="btn secondary photo-adjust-btn"
+            onClick={onRequestAdjust}
+            disabled={processing}
+          >
+            <ExpandIcon size={20} />
+            位置とサイズを調整
+          </button>
 
           <div className="photo-acts">
             <button type="button" className="btn secondary sm" onClick={openPicker} disabled={processing}>

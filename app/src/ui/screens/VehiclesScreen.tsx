@@ -12,6 +12,7 @@ import { elapsedYearsMonths } from '../../logic/vehicleAge'
 import { useApp } from '../AppContext'
 import { ConfirmDialog, ModalAppBar } from '../components'
 import { BikeIcon, CarIcon, PlusIcon } from '../icons'
+import { PhotoAdjustSheet } from '../PhotoAdjustSheet'
 import {
   VehiclePhotoField,
   VehiclePhotoThumb,
@@ -115,6 +116,8 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   const [form, setForm] = useState<FormState>(emptyForm())
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [confirmPhotoDelete, setConfirmPhotoDelete] = useState(false)
+  /** S-08a 写真の調整シート(全画面)。調整値はフォームの「保存する」で確定する */
+  const [adjustOpen, setAdjustOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   /** アーカイブ済み車両(B-1: 復元導線)。折りたたみ表示 */
   const [archived, setArchived] = useState<Vehicle[]>([])
@@ -142,6 +145,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
   const openForm = (target: 'new' | Vehicle) => {
     setForm(target === 'new' ? emptyForm() : formFromVehicle(target))
     setEditing(target)
+    setAdjustOpen(false)
   }
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -190,6 +194,9 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
         inspectionExpiry: form.inspectionExpiry || null,
         // 写真(F-22): Blob=設定・null=削除・undefined=変更なし
         photo: photo.photoPatch,
+        // 表示調整(F-22b): 値=その調整にする・undefined=変更なし
+        // (写真を差し替え・削除した場合はリポジトリ側で既定値に戻る)
+        photoAdjust: photo.adjustPatch,
       }
       const wasOnboarding = isOnboarding
       let saved: Vehicle
@@ -280,6 +287,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                   type={v.vehicleType}
                   hasPhoto={v.photoUpdatedAt !== undefined}
                   url={archivedPhotoUrls.get(v.id)}
+                  adjust={v.photoAdjust}
                 />
                 <div className="grow">
                   <div style={{ fontWeight: 700 }}>{v.name}</div>
@@ -337,6 +345,8 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
                       type={v.vehicleType}
                       hasPhoto={v.photoUpdatedAt !== undefined}
                       url={photoUrls.get(v.id)}
+                      /* 注視点は反映し、倍率は max(1, zoom) にクランプ(5.15.6) */
+                      adjust={v.photoAdjust}
                     />
                     <div className="grow">
                       <div style={{ fontWeight: 700 }}>
@@ -427,6 +437,7 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
               vehicleType={form.vehicleType}
               isNew={editing === 'new'}
               onRequestRemove={() => setConfirmPhotoDelete(true)}
+              onRequestAdjust={() => setAdjustOpen(true)}
             />
 
             <div className="field">
@@ -582,6 +593,21 @@ export function VehiclesScreen({ openFormOnMount }: { openFormOnMount?: boolean 
           </div>
         )}
       </div>
+
+      {/* S-08a 写真の調整(全画面シート)。フォームの入力内容は開いている間も保持される */}
+      {adjustOpen && photo.previewUrl && (
+        <PhotoAdjustSheet
+          url={photo.previewUrl}
+          size={photo.previewSize}
+          vehicleType={form.vehicleType}
+          adjust={photo.adjust}
+          onDone={(next) => {
+            photo.stageAdjust(next)
+            setAdjustOpen(false)
+          }}
+          onCancel={() => setAdjustOpen(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmPhotoDelete}

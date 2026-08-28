@@ -137,6 +137,30 @@ export const PhotoIcon = (p: IconProps) => (
   </Svg>
 )
 
+/** 拡縮(斜め両矢印 ⤢。写真の調整 S-08a。デザインガイド 5.15.5) */
+export const ExpandIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M15 3h6v6M21 3l-7 7" />
+    <path d="M9 21H3v-6M3 21l7-7" />
+  </Svg>
+)
+
+/** 拡大(＋の虫めがね。写真の大きさスライダーの＋側) */
+export const ZoomInIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M11 8v6M8 11h6M20 20l-3.6-3.6" />
+  </Svg>
+)
+
+/** 縮小(−の虫めがね。写真の大きさスライダーの−側) */
+export const ZoomOutIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M8 11h6M20 20l-3.6-3.6" />
+  </Svg>
+)
+
 /** ダウンロード(エクスポート) */
 export const DownloadIcon = (p: IconProps) => (
   <Svg {...p}>

@@ -12,7 +12,8 @@ import { calculateFuelStats, calculateMonthlyFuelCost } from '../../logic/fuelEc
 import { useApp } from '../AppContext'
 import { ListAppBar } from '../components'
 import { FuelIcon, WrenchIcon } from '../icons'
-import { usePhotoLoadState, useVehiclePhoto } from '../photo'
+import { PhotoFill, firstUsableSize, usePhotoLoadState, useVehiclePhoto } from '../photo'
+import { HERO_FRAME } from '../../logic/photoEditor'
 import {
   fmtDateFull,
   fmtEconomy,
@@ -98,9 +99,16 @@ export function HomeScreen() {
   const sparkValues = confirmed.slice(-12).map((r) => r.fuelEconomy!)
 
   // 愛車の写真をヒーロー背景に敷く(5.15.3)。読み込み前・失敗時は無地ネイビー(無言でフォールバック)
-  const { url: photoUrl } = useVehiclePhoto(selectedVehicle)
-  const { shown: photoShown, failed: photoFailed, imgProps } = usePhotoLoadState(photoUrl)
+  const { url: photoUrl, photo } = useVehiclePhoto(selectedVehicle)
+  const {
+    shown: photoShown,
+    failed: photoFailed,
+    naturalSize,
+    imgProps,
+  } = usePhotoLoadState(photoUrl)
   const hasPhoto = selectedVehicle?.photoUpdatedAt !== undefined && !photoFailed
+  // 実寸が分かるときだけ調整値(5.15.6)を適用。分からなければ従来の cover 表示
+  const photoSize = firstUsableSize(photo, naturalSize)
 
   return (
     <section className="screen">
@@ -111,41 +119,52 @@ export function HomeScreen() {
       >
         {photoUrl && !photoFailed && (
           <div className={`hero-bg ph-fade${photoShown ? ' on' : ''}`} aria-hidden="true">
-            <img src={photoUrl} alt="" {...imgProps} />
+            {/* 縮小したときの余白は枠の地色(無地ネイビー)。スクリムは写真部分と
+                余白部分に均一に敷く(領域で分岐しない。5.15.3) */}
+            <PhotoFill
+              url={photoUrl}
+              size={photoSize}
+              frame={HERO_FRAME}
+              adjust={selectedVehicle?.photoAdjust}
+              imgProps={imgProps}
+            />
             <span className="scrim" />
           </div>
         )}
-        <div className="lbl">直近の燃費</div>
-        <div className="big num">
-          {fmtEconomy(recent)}
-          <small>km/L</small>
-        </div>
-        {records.length === 0 ? (
-          <div className="meta">
-            <span>最初の給油を記録しましょう</span>
+        {/* 写真ありのときは 16:9 の枠と同じセルに重ね、下寄せで置く(5.15.3) */}
+        <div className="hero-body">
+          <div className="lbl">直近の燃費</div>
+          <div className="big num">
+            {fmtEconomy(recent)}
+            <small>km/L</small>
           </div>
-        ) : (
-          <div className="meta">
-            <span>
-              平均 <b className="num">{fmtEconomy(stats.averageEconomy)}</b> km/L
-            </span>
-            {diff !== null && (
+          {records.length === 0 ? (
+            <div className="meta">
+              <span>最初の給油を記録しましょう</span>
+            </div>
+          ) : (
+            <div className="meta">
               <span>
-                前回比{' '}
-                <b className={diff >= 0 ? 'trend-up' : 'trend-down'}>
-                  {diff >= 0 ? '+' : ''}
-                  {diff.toFixed(1)}
-                </b>
+                平均 <b className="num">{fmtEconomy(stats.averageEconomy)}</b> km/L
               </span>
-            )}
-            <span>
-              今月の燃料費 <b className="num">¥{fmtInt(monthly.total)}</b>
-              {monthly.excludedCount > 0 && (
-                <span style={{ fontSize: 11 }}>(金額なし{monthly.excludedCount}件は対象外)</span>
+              {diff !== null && (
+                <span>
+                  前回比{' '}
+                  <b className={diff >= 0 ? 'trend-up' : 'trend-down'}>
+                    {diff >= 0 ? '+' : ''}
+                    {diff.toFixed(1)}
+                  </b>
+                </span>
               )}
-            </span>
-          </div>
-        )}
+              <span>
+                今月の燃料費 <b className="num">¥{fmtInt(monthly.total)}</b>
+                {monthly.excludedCount > 0 && (
+                  <span style={{ fontSize: 11 }}>(金額なし{monthly.excludedCount}件は対象外)</span>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="body-pad" style={{ flex: 1 }}>
