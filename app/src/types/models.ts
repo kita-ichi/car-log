@@ -24,6 +24,31 @@ export type MaintenanceType =
   | 'wiper'
   | 'other'
 
+/**
+ * 写真の表示調整(F-22b)。写真そのものは再加工せず、**表示のたびに適用する**値。
+ *
+ * ヒーロー(16:7)と44pxサムネイル(1:1)という**縦横比の違う枠に同じ値を適用できる**
+ * よう、枠の絶対サイズに依存しない相対値で持つ:
+ *
+ * - `zoom` は「その枠を覆う最小倍率(cover)」を 1 とする相対値。
+ *   cover は枠ごとに計算されるので、`zoom: 1` はどの枠でも「ちょうど覆う」を意味する
+ * - `focusX` / `focusY` は**写真自身の座標**上の注視点。枠の中心に来るように配置する
+ *   (枠からはみ出す場合は余白が見えないよう表示時にクランプする)
+ *
+ * 既定値 `{ zoom: 1, focusX: 0.5, focusY: 0.5 }` は
+ * `object-fit: cover; object-position: center` と**完全に一致する**。
+ * そのため値を持たない既存レコード(= undefined)は既定値として扱えばよく、
+ * 表示は従来どおりになる(logic/photoAdjust.ts の normalizePhotoAdjust)。
+ */
+export interface PhotoAdjust {
+  /** 拡大率。cover を 1 とする相対値。1未満 = 枠より縮小(余白が出る) */
+  zoom: number
+  /** 注視点X(0=左端 / 0.5=中央 / 1=右端) */
+  focusX: number
+  /** 注視点Y(0=上端 / 0.5=中央 / 1=下端) */
+  focusY: number
+}
+
 /** 全レコード共通フィールド(§5 冒頭) */
 export interface BaseEntity {
   /** UUID */
@@ -66,6 +91,23 @@ export interface Vehicle extends BaseEntity {
    *   無効化キーに使える(vehicleRepository が自動で維持する。手で書き換えない)
    */
   photoUpdatedAt?: string
+  /**
+   * 写真の表示調整(F-22b)。**未設定 = 既定値(cover + center)** で、
+   * 従来どおりの見え方になる。読むときは必ず
+   * `normalizePhotoAdjust(vehicle.photoAdjust)`(logic/photoAdjust.ts)を通すこと。
+   *
+   * **写真本体(vehiclePhotos)ではなく Vehicle 側に持つ理由**:
+   * - 値は数値3つで、写真を読まない一覧(`listActive()`)に載せても実質的な負荷が無い
+   *   (本体と分けたのは数百KBの Blob を一覧で読まないためで、その理由はここには当たらない)
+   * - 44pxサムネイル一覧は写真の **ObjectURL しか受け取っていない**(`getPhotos()` の戻り値は
+   *   Map<id, VehiclePhoto> だが UI は URL だけを保持する)。Vehicle 側にあれば
+   *   既存の `refreshVehicles()` 経路でそのまま全画面に届き、追加の読み出しが要らない
+   * - `photoUpdatedAt` は ObjectURL のキャッシュ無効化キー(= 画像バイト列の同一性)。
+   *   位置合わせを変えただけで画像を読み直させたくないので、両者は別々に更新する
+   * - 写真を差し替えたときのリセットは、写真テーブルと車両行を同一トランザクションで
+   *   更新している既存の `update()` がそのまま担保する
+   */
+  photoAdjust?: PhotoAdjust
   /** 手放した車両の非表示用(削除ではなくアーカイブ。記録は保持) */
   isArchived: boolean
 }
