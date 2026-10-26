@@ -286,15 +286,19 @@ export function FuelNewScreen() {
 
   if (!selectedVehicle) return null
 
-  // 前回値(逆行警告・ヒント)の基準: 入力日付の「直前」の記録。
-  // 過去日付の後追い入力では最新記録ではなく時系列上の直前と比較する。
-  // 記録がなければ登録時ODO(任意)。それも未設定なら null = 基準なし(逆行警告なし・ヒント非表示)
-  const previousOdo = findPreviousRecord(existing, form.date)?.odo ?? selectedVehicle.initialOdo ?? null
-  const previousUnitPrice = existing[existing.length - 1]?.unitPrice ?? null
-
   const odo = toNum(form.odo)
   const fuelAmount = toNum(form.fuelAmount)
   const totalPrice = toNum(form.totalPrice)
+
+  // 前回値(逆行警告・ヒント)の基準: 入力中の記録の時系列上の「直前」の記録。
+  // 過去日付の後追い入力では最新記録ではなく時系列上の直前と比較する。
+  // 同日に複数回給油する場合は入力中のODOで位置を決める(同日の後の記録を「前回」と誤認しないため)。
+  // ODO未入力時は anchor なし = その日付までの最後の記録をヒント表示する。
+  // 記録がなければ登録時ODO(任意)。それも未設定なら null = 基準なし(逆行警告なし・ヒント非表示)
+  const previousOdo =
+    findPreviousRecord(existing, form.date, { odo })?.odo ?? selectedVehicle.initialOdo ?? null
+  // 前回の単価ヒント: existing は時系列昇順(listByVehicle 'asc')なので末尾が最新の記録
+  const previousUnitPrice = existing[existing.length - 1]?.unitPrice ?? null
   const result = validateFuelRecord(
     { date: form.date, odo, fuelAmount, totalPrice, isFullTank: form.isFullTank },
     {
@@ -429,14 +433,23 @@ export function FuelDetailScreen({ id }: { id: string }) {
     )
   }
 
-  // 編集時の前回ODO: 編集中の日付の「直前」の記録(自分を除く)。
-  // 日付を変更した場合もその位置での直前記録と比較する。
-  // 基準は選択中車両ではなく「この記録の車両」(record.vehicleId)
-  const previousOdo = findPreviousRecord(others, form.date)?.odo ?? vehicle?.initialOdo ?? null
-
   const odo = toNum(form.odo)
   const fuelAmount = toNum(form.fuelAmount)
   const totalPrice = toNum(form.totalPrice)
+
+  // 編集時の前回ODO: この記録の時系列上の「直前」の記録(自分を除く)。
+  // 日付を変更した場合もその位置での直前記録と比較する。
+  // anchor にこの記録の位置(入力中ODO・createdAt・id)を渡すことで、同日に複数回
+  // 給油している場合に同日の「後の」記録を「前回」と誤認しない(B: 同日2回給油の誤警告)。
+  // 基準は選択中車両ではなく「この記録の車両」(record.vehicleId)
+  const previousOdo =
+    findPreviousRecord(others, form.date, {
+      odo: odo ?? record.odo,
+      createdAt: record.createdAt,
+      id: record.id,
+    })?.odo ??
+    vehicle?.initialOdo ??
+    null
   const result = validateFuelRecord(
     { date: form.date, odo, fuelAmount, totalPrice, isFullTank: form.isFullTank },
     {
