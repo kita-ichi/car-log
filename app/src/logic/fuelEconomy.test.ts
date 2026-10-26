@@ -363,6 +363,157 @@ describe('findPreviousRecord(入力日付の直前の記録 — ODO逆行警告�
   })
 })
 
+describe('findPreviousRecord(anchor 指定 — 同日複数給油の誤警告対策)', () => {
+  /** createdAt つきの記録(同日・同ODO時の順序決定テスト用) */
+  const recAt = (
+    id: string,
+    date: string,
+    odo: number,
+    createdAt: string,
+  ): FuelRecordForCalc => ({ ...rec(id, date, odo, 20), createdAt })
+
+  // 実使用で報告されたケース: 10/25 に2回給油(ODO 2301 → 2644)、前日以前に 1974
+  const prev = recAt('prev', '2026-10-20', 1974, '2026-10-20T09:00:00.000Z')
+  const first = recAt('first', '2026-10-25', 2301, '2026-10-25T08:00:00.000Z')
+  const second = recAt('second', '2026-10-25', 2644, '2026-10-25T19:00:00.000Z')
+  const all = [prev, first, second]
+  /** S-04 編集画面と同じく「自分を除く記録」を作る */
+  const others = (self: FuelRecordForCalc) => all.filter((r) => r.id !== self.id)
+
+  it('同日2件の1件目を anchor にすると前日以前の記録を返す(同日の後の記録を前回扱いしない)', () => {
+    const found = findPreviousRecord(others(first), first.date, {
+      odo: first.odo,
+      createdAt: first.createdAt,
+      id: first.id,
+    })
+    expect(found?.id).toBe('prev')
+    expect(found?.odo).toBe(1974) // 2301 > 1974 なので逆行警告は出ない
+  })
+
+  it('同日2件の2件目を anchor にすると同日1件目を返す', () => {
+    const found = findPreviousRecord(others(second), second.date, {
+      odo: second.odo,
+      createdAt: second.createdAt,
+      id: second.id,
+    })
+    expect(found?.id).toBe('first')
+    expect(found?.odo).toBe(2301) // 2644 > 2301 なので逆行警告は出ない
+  })
+
+  it('anchor の記録自身が records に含まれていても「厳密に前」で除外される', () => {
+    expect(
+      findPreviousRecord(all, first.date, {
+        odo: first.odo,
+        createdAt: first.createdAt,
+        id: first.id,
+      })?.id,
+    ).toBe('prev')
+  })
+
+  it('anchor 省略時は従来どおり「その日付までの最後の記録」を返す(後方互換)', () => {
+    expect(findPreviousRecord(others(first), first.date)?.id).toBe('second')
+    expect(findPreviousRecord(all, '2026-10-25')?.id).toBe('second')
+    expect(findPreviousRecord(all, '2026-10-21')?.id).toBe('prev')
+  })
+
+  it('anchor の odo が未指定/NaN のときも従来どおり(S-02 でODO未入力なら最新をヒント表示)', () => {
+    expect(findPreviousRecord(all, '2026-10-25', { odo: null })?.id).toBe('second')
+    expect(findPreviousRecord(all, '2026-10-25', {})?.id).toBe('second')
+    expect(findPreviousRecord(all, '2026-10-25', { odo: Number.NaN })?.id).toBe('second')
+    expect(findPreviousRecord(all, '2026-10-25', null)?.id).toBe('second')
+    // ODO未入力でも日付の絞り込みは効く
+    expect(findPreviousRecord(all, '2026-10-21', { odo: null })?.id).toBe('prev')
+  })
+
+  it('S-02 新規入力: 同日の途中のODOを入力中でも直前(ODOが小さい側)を返す', () => {
+    expect(findPreviousRecord(all, '2026-10-25', { odo: 2500 })?.id).toBe('first')
+    expect(findPreviousRecord(all, '2026-10-25', { odo: 2700 })?.id).toBe('second')
+    // 同日の最小ODOより小さい入力なら前日以前の記録が基準
+    expect(findPreviousRecord(all, '2026-10-25', { odo: 2000 })?.id).toBe('prev')
+  })
+
+  it('同日3件以上でも各記録の直前を返す', () => {
+    const third = recAt('third', '2026-10-25', 2900, '2026-10-25T22:00:00.000Z')
+    const four = [prev, first, second, third]
+    const anchorOf = (r: FuelRecordForCalc) => ({ odo: r.odo, createdAt: r.createdAt, id: r.id })
+    expect(findPreviousRecord(four, first.date, anchorOf(first))?.id).toBe('prev')
+    expect(findPreviousRecord(four, second.date, anchorOf(second))?.id).toBe('first')
+    expect(findPreviousRecord(four, third.date, anchorOf(third))?.id).toBe('second')
+  })
+
+  it('同日・同ODO は createdAt の順で直前が決まる', () => {
+    const dupEarly = recAt('dup-early', '2026-10-25', 2301, '2026-10-25T08:00:00.000Z')
+    const dupLate = recAt('dup-late', '2026-10-25', 2301, '2026-10-25T12:00:00.000Z')
+    const records = [prev, dupEarly, dupLate]
+    expect(
+      findPreviousRecord(records, dupLate.date, {
+        odo: dupLate.odo,
+        createdAt: dupLate.createdAt,
+        id: dupLate.id,
+      })?.id,
+    ).toBe('dup-early')
+    expect(
+      findPreviousRecord(records, dupEarly.date, {
+        odo: dupEarly.odo,
+        createdAt: dupEarly.createdAt,
+        id: dupEarly.id,
+      })?.id,
+    ).toBe('prev')
+  })
+
+  it('同日・同ODO・同createdAt は id の順で直前が決まる', () => {
+    const sameA = recAt('aaa', '2026-10-25', 2301, '2026-10-25T08:00:00.000Z')
+    const sameB = recAt('bbb', '2026-10-25', 2301, '2026-10-25T08:00:00.000Z')
+    const records = [prev, sameA, sameB]
+    expect(
+      findPreviousRecord(records, '2026-10-25', {
+        odo: 2301,
+        createdAt: sameB.createdAt,
+        id: sameB.id,
+      })?.id,
+    ).toBe('aaa')
+    expect(
+      findPreviousRecord(records, '2026-10-25', {
+        odo: 2301,
+        createdAt: sameA.createdAt,
+        id: sameA.id,
+      })?.id,
+    ).toBe('prev')
+  })
+
+  it('日付をまたぐ本当の逆行では前日以前の記録が基準になる(警告は従来どおり出る)', () => {
+    // 翌日に ODO 2000(前日の 2644 より小さい)を入力 → 基準は 2644 のまま = 逆行警告あり
+    const found = findPreviousRecord(all, '2026-10-26', { odo: 2000 })
+    expect(found?.id).toBe('second')
+    expect(found?.odo).toBe(2644)
+    expect(2000 < (found?.odo ?? 0)).toBe(true)
+  })
+
+  it('同日の記録しか無い場合は undefined(initialOdo 基準は呼び出し側)', () => {
+    expect(
+      findPreviousRecord([second], first.date, {
+        odo: first.odo,
+        createdAt: first.createdAt,
+        id: first.id,
+      }),
+    ).toBeUndefined()
+    expect(findPreviousRecord([], '2026-10-25', { odo: 2301 })).toBeUndefined()
+  })
+
+  it('同日2件の燃費計算・走行距離は anchor 導入前と変わらない(計算は ODO 昇順)', () => {
+    // 1974(満タン) → 2301(満タン, 15.51L) → 2644
+    const records = [
+      rec('prev', '2026-10-20', 1974, 30),
+      rec('first', '2026-10-25', 2301, 15.51),
+      rec('second', '2026-10-25', 2644, 20),
+    ]
+    const { perRecord, intervals } = calculateFuelEconomies(records)
+    expect(perRecord.get('first')).toBe(21.08) // 327km ÷ 15.51L
+    expect(intervals[0]).toMatchObject({ endRecordId: 'first', startOdo: 1974, distance: 327 })
+    expect(intervals[1]).toMatchObject({ endRecordId: 'second', startOdo: 2301, distance: 343 })
+  })
+})
+
 describe('calculateFuelStats(統計)', () => {
   it('平均燃費は「総走行距離 ÷ 総給油量」であり、区間燃費の単純平均ではない', () => {
     const records = [

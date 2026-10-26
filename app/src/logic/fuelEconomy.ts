@@ -77,18 +77,34 @@ export interface MonthlyFuelCost {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
+/** 時系列順の比較に使うキー(記録そのものでも、入力中の値から組んだものでも可) */
+interface ChronologicalKey {
+  date: string
+  odo: number
+  createdAt?: string
+  id?: string
+}
+
 /**
- * 給油記録を時系列にソートする(date → odo → createdAt → id)。
- * 'YYYY-MM-DD' / ISO 8601 は文字列比較で時系列順になる。元配列は変更しない。
+ * 時系列順の比較(date → odo → createdAt → id)。
+ * 'YYYY-MM-DD' / ISO 8601 は文字列比較で時系列順になる。
+ * ソートと「直前の記録」の判定で同じ順序を使うため、比較はここに一元化する。
+ */
+function compareChronologically(a: ChronologicalKey, b: ChronologicalKey): number {
+  return (
+    a.date.localeCompare(b.date) ||
+    a.odo - b.odo ||
+    (a.createdAt ?? '').localeCompare(b.createdAt ?? '') ||
+    (a.id ?? '').localeCompare(b.id ?? '')
+  )
+}
+
+/**
+ * 給油記録を時系列にソートする(date → odo → createdAt → id)。元配列は変更しない。
+ * ※同日に複数回給油した場合、同日内の時系列順は「ODO昇順」として扱う。
  */
 export function sortRecordsChronologically<T extends FuelRecordForCalc>(records: readonly T[]): T[] {
-  return [...records].sort(
-    (a, b) =>
-      a.date.localeCompare(b.date) ||
-      a.odo - b.odo ||
-      (a.createdAt ?? '').localeCompare(b.createdAt ?? '') ||
-      a.id.localeCompare(b.id),
-  )
+  return [...records].sort(compareChronologically)
 }
 
 /**
@@ -192,16 +208,58 @@ export function previewFuelEconomy(
 }
 
 /**
- * 指定日付の時点で「直前」となる記録を返す(ODO逆行警告の基準に使う)。
- * 過去日付の後追い入力では最新記録ではなく、入力日付より前の最後の記録と比較すべきため。
- * 同日の記録は「その日にすでに記録済みのもの」として直前候補に含める。
+ * 「直前」の記録を探すときの位置の基準(anchor)。
+ * 対象の記録(または入力中の値)が時系列ソート上のどこに位置するかを表す。
+ * odo が未指定/NaN のときは位置を決められないため、日付ベースの判定にフォールバックする。
+ */
+export interface PreviousRecordAnchor {
+  /** 対象のODO(入力中なら入力値)。未入力は null/undefined */
+  odo?: number | null
+  /** 対象の作成日時(同日・同ODO時の順序決定に使う) */
+  createdAt?: string | null
+  /** 対象のID(同日・同ODO・同createdAt時の順序決定に使う) */
+  id?: string | null
+}
+
+/**
+ * 時系列上で「直前」となる記録を返す(ODO逆行警告・前回値ヒントの基準に使う)。
+ * 過去日付の後追い入力では最新記録ではなく、その位置の直前の記録と比較すべきため。
  * 該当が無ければ undefined(車両の initialOdo を基準にするのは呼び出し側の責務)。
+ *
+ * anchor を渡すと、ソート順(date → odo → createdAt → id)で**厳密に前**にある
+ * 記録のうち最後のものを返す。同日に複数回給油した場合に、同日の「後の」記録
+ * (ODOがより大きい記録)を「前回」と誤認しないために必要。
+ *
+ * anchor 省略時(または anchor.odo が未入力・NaN のとき)は後方互換の挙動:
+ * 「その日付までの最後の記録」= 同日の記録も直前候補に含めた上での最後を返す。
+ * 新規入力でODO未入力のときに最新記録をヒント表示する用途。
+ *
+ * @param records 対象車両の記録(編集時は自分を除いて渡す。含んでいても anchor 指定時は
+ *                「厳密に前」の判定で自分自身は除外される)
+ * @param date    対象の給油日 'YYYY-MM-DD'
+ * @param anchor  対象の時系列位置(任意)
  */
 export function findPreviousRecord<T extends FuelRecordForCalc>(
   records: readonly T[],
   date: string,
+  anchor?: PreviousRecordAnchor | null,
 ): T | undefined {
-  const before = sortRecordsChronologically(records).filter((r) => r.date <= date)
+  const sorted = sortRecordsChronologically(records)
+  const anchorOdo = anchor?.odo
+
+  // ODOが分からない場合は位置を特定できないので日付だけで判定(従来挙動)
+  if (typeof anchorOdo !== 'number' || !Number.isFinite(anchorOdo)) {
+    const before = sorted.filter((r) => r.date <= date)
+    return before[before.length - 1]
+  }
+
+  const key: ChronologicalKey = {
+    date,
+    odo: anchorOdo,
+    createdAt: anchor?.createdAt ?? '',
+    id: anchor?.id ?? '',
+  }
+  const before = sorted.filter((r) => compareChronologically(r, key) < 0)
   return before[before.length - 1]
 }
 
